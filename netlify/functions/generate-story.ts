@@ -88,9 +88,14 @@ Genereer:
     return { statusCode: 200, body: JSON.stringify({ success: true, data: parsed }) };
   } catch (error: any) {
     console.error('Error generating story:', error);
+    const isQuotaError = error.status === 429 || /RESOURCE_EXHAUSTED|quota/i.test(error.message || '');
     return {
-      statusCode: 500,
-      body: JSON.stringify({ error: error.message || 'Fout bij het genereren van het verhaal.' })
+      statusCode: isQuotaError ? 429 : 500,
+      body: JSON.stringify({
+        error: isQuotaError
+          ? 'De gratis dagelijkse limiet van de AI-dienst is bereikt. Probeer het morgen opnieuw, of schakel in Google AI Studio over naar het betaalde niveau voor meer ruimte.'
+          : (error.message || 'Fout bij het genereren van het verhaal.')
+      })
     };
   }
 };
