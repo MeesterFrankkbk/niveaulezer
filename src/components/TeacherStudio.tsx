@@ -75,29 +75,93 @@ export const TeacherStudio: React.FC<TeacherStudioProps> = ({
   const [isGeneratingQuestions, setIsGeneratingQuestions] = useState(false);
   const [genQuestionsError, setGenQuestionsError] = useState<string | null>(null);
   const contentTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const imageFileInputRef = useRef<HTMLInputElement>(null);
+  const coverImageFileInputRef = useRef<HTMLInputElement>(null);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [imageUploadError, setImageUploadError] = useState<string | null>(null);
 
-  // Insert an inline image (![beschrijving](url)) at the cursor position in the content textarea
+  // Uploads a File to the upload-image function and returns the resulting URL
+  const uploadImageFile = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const dataUrl = reader.result as string;
+          const base64 = dataUrl.split(',')[1];
+          const response = await fetch('/api/upload-image', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ imageBase64: base64, filename: file.name, contentType: file.type })
+          });
+          if (!response.ok) {
+            const err = await response.json().catch(() => null);
+            throw new Error(err?.error || 'Uploaden mislukt.');
+          }
+          const data = await response.json();
+          resolve(data.url);
+        } catch (err) {
+          reject(err);
+        }
+      };
+      reader.onerror = () => reject(new Error('Kon het bestand niet lezen.'));
+      reader.readAsDataURL(file);
+    });
+  };
+
+  // Insert an inline image (uploaded via file picker) at the cursor position in the content textarea
   const handleInsertImageInText = () => {
-    const url = window.prompt('Plak hier de link (URL) van de afbeelding:');
-    if (!url || !url.trim()) return;
-    const alt = window.prompt('Korte beschrijving van de afbeelding (optioneel, voor leerlingen met een screenreader):') || '';
+    imageFileInputRef.current?.click();
+  };
 
-    const snippet = `\n\n![${alt.trim()}](${url.trim()})\n\n`;
-    const textarea = contentTextareaRef.current;
+  const handleImageFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // reset so selecting the same file again still fires onChange
+    if (!file) return;
 
-    if (textarea) {
-      const start = textarea.selectionStart ?? editorContent.length;
-      const end = textarea.selectionEnd ?? editorContent.length;
-      const newContent = editorContent.slice(0, start) + snippet + editorContent.slice(end);
-      setEditorContent(newContent);
-      // Restore focus and cursor position after the inserted snippet
-      requestAnimationFrame(() => {
-        textarea.focus();
-        const cursorPos = start + snippet.length;
-        textarea.setSelectionRange(cursorPos, cursorPos);
-      });
-    } else {
-      setEditorContent(prev => prev + snippet);
+    setIsUploadingImage(true);
+    setImageUploadError(null);
+
+    try {
+      const url = await uploadImageFile(file);
+      const alt = window.prompt('Korte beschrijving van de afbeelding (optioneel, voor leerlingen met een screenreader):') || '';
+      const snippet = `\n\n![${alt.trim()}](${url})\n\n`;
+      const textarea = contentTextareaRef.current;
+
+      if (textarea) {
+        const start = textarea.selectionStart ?? editorContent.length;
+        const end = textarea.selectionEnd ?? editorContent.length;
+        const newContent = editorContent.slice(0, start) + snippet + editorContent.slice(end);
+        setEditorContent(newContent);
+        requestAnimationFrame(() => {
+          textarea.focus();
+          const cursorPos = start + snippet.length;
+          textarea.setSelectionRange(cursorPos, cursorPos);
+        });
+      } else {
+        setEditorContent(prev => prev + snippet);
+      }
+    } catch (err: any) {
+      setImageUploadError(err.message || 'Uploaden van de afbeelding is mislukt.');
+    } finally {
+      setIsUploadingImage(false);
+    }
+  };
+
+  const handleCoverImageFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    setIsUploadingImage(true);
+    setImageUploadError(null);
+
+    try {
+      const url = await uploadImageFile(file);
+      setEditorImage(url);
+    } catch (err: any) {
+      setImageUploadError(err.message || 'Uploaden van de afbeelding is mislukt.');
+    } finally {
+      setIsUploadingImage(false);
     }
   };
 
@@ -795,17 +859,40 @@ export const TeacherStudio: React.FC<TeacherStudioProps> = ({
 
                   <div>
                     <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
-                      Afbeelding URL (optioneel)
+                      Omslagfoto (optioneel)
                     </label>
-                    <input
-                      type="url"
-                      value={editorImage}
-                      onChange={(e) => setEditorImage(e.target.value)}
-                      placeholder="https://..."
-                      className="w-full p-2.5 bg-stone-50 border border-stone-200 rounded-xl text-sm"
-                    />
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="url"
+                        value={editorImage}
+                        onChange={(e) => setEditorImage(e.target.value)}
+                        placeholder="https:// (of upload hiernaast)"
+                        className="flex-1 p-2.5 bg-stone-50 border border-stone-200 rounded-xl text-sm"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => coverImageFileInputRef.current?.click()}
+                        disabled={isUploadingImage}
+                        className="px-3 py-2.5 bg-stone-100 hover:bg-stone-200 disabled:opacity-60 text-stone-700 text-xs font-bold rounded-xl cursor-pointer whitespace-nowrap"
+                      >
+                        📤 Upload
+                      </button>
+                      <input
+                        ref={coverImageFileInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={handleCoverImageFileSelected}
+                        className="hidden"
+                      />
+                    </div>
                   </div>
                 </div>
+
+                {imageUploadError && (
+                  <p className="text-xs font-bold text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2 mb-4">
+                    {imageUploadError}
+                  </p>
+                )}
 
                 {/* Content */}
                 <div className="mb-6">
@@ -827,11 +914,19 @@ export const TeacherStudio: React.FC<TeacherStudioProps> = ({
                     <button
                       type="button"
                       onClick={handleInsertImageInText}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-amber-50 border border-amber-200 text-amber-800 text-xs font-bold rounded-xl cursor-pointer"
+                      disabled={isUploadingImage}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-amber-50 disabled:opacity-60 border border-amber-200 text-amber-800 text-xs font-bold rounded-xl cursor-pointer"
                     >
-                      🖼️ Afbeelding invoegen op cursorpositie
+                      {isUploadingImage ? '⏳ Bezig met uploaden...' : '🖼️ Afbeelding uploaden op cursorpositie'}
                     </button>
                     <span className="text-[11px] text-stone-400">Plaatst een nieuwe alinea met een afbeelding tussen de tekst.</span>
+                    <input
+                      ref={imageFileInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageFileSelected}
+                      className="hidden"
+                    />
                   </div>
                 </div>
 
