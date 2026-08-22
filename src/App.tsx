@@ -336,7 +336,7 @@ export default function App() {
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
               
               {/* Level Selector Pills */}
-              <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto pb-2 sm:pb-0 scrollbar-none">
+              <div className="flex items-center gap-1.5 overflow-x-auto min-w-0 w-full sm:w-auto pb-2 sm:pb-0 scrollbar-none">
                 <button
                   onClick={() => setSelectedLevelFilter('ALL')}
                   className={`px-4 py-2 rounded-2xl text-xs font-extrabold font-lexend transition-all shrink-0 cursor-pointer ${
