@@ -95,9 +95,14 @@ Extraheer en structureer deze leesoefening zorgvuldig:
     return { statusCode: 200, body: JSON.stringify({ success: true, data: parsed }) };
   } catch (error: any) {
     console.error('Error parsing Hot Potatoes:', error);
+    const isQuotaError = error.status === 429 || /RESOURCE_EXHAUSTED|quota/i.test(error.message || '');
     return {
-      statusCode: 500,
-      body: JSON.stringify({ error: error.message || 'Fout bij het verwerken van de Hot Potatoes oefening.' })
+      statusCode: isQuotaError ? 429 : 500,
+      body: JSON.stringify({
+        error: isQuotaError
+          ? 'De gratis dagelijkse limiet van de AI-dienst is bereikt. Probeer het morgen opnieuw, of schakel in Google AI Studio over naar het betaalde niveau voor meer ruimte.'
+          : (error.message || 'Fout bij het verwerken van de Hot Potatoes oefening.')
+      })
     };
   }
 };
