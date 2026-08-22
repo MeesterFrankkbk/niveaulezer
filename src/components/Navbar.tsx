@@ -43,9 +43,6 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span className="text-xl sm:text-2xl font-black text-stone-900 font-lexend tracking-tight">
                 NiveauLezer
               </span>
-              <span className="hidden sm:inline-block px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 text-[11px] font-extrabold uppercase font-lexend">
-                Vlaams Basisonderwijs
-              </span>
             </div>
             <p className="text-[11px] text-amber-700 font-bold hidden md:block">
               Wie leest, groeit! • {totalStoriesCount} verhalen op jouw niveau
