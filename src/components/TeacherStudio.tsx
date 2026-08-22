@@ -202,7 +202,8 @@ export const TeacherStudio: React.FC<TeacherStudioProps> = ({
       });
 
       if (!response.ok) {
-        throw new Error('Deze functie heeft een AI-server nodig die hier niet beschikbaar is.');
+        const errBody = await response.json().catch(() => null);
+        throw new Error(errBody?.error || 'Deze functie heeft een AI-server nodig die hier niet beschikbaar is.');
       }
 
       const data = await response.json();
@@ -490,7 +491,8 @@ export const TeacherStudio: React.FC<TeacherStudioProps> = ({
       });
 
       if (!response.ok) {
-        throw new Error('Deze functie heeft een AI-server nodig die hier niet beschikbaar is. Voeg zelf een tekst toe via "Handmatig invoeren".');
+        const errBody = await response.json().catch(() => null);
+        throw new Error(errBody?.error || 'Deze functie heeft een AI-server nodig die hier niet beschikbaar is. Voeg zelf een tekst toe via "Handmatig invoeren".');
       }
 
       const data = await response.json();
