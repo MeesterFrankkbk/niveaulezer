@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Story, AviLevel, TeacherSettings, StudentResult, DifficultWord, Question } from '../types';
-import { calculateAviLevel, AVI_COLORS } from '../utils/aviCalculator';
+import { calculateAviLevel, AVI_COLORS, stripInlineImages } from '../utils/aviCalculator';
 import { 
   Plus, 
   Sparkles, 
@@ -72,6 +72,95 @@ export const TeacherStudio: React.FC<TeacherStudioProps> = ({
   const [editorDiffWords, setEditorDiffWords] = useState<DifficultWord[]>([]);
   const [editorQuestions, setEditorQuestions] = useState<Question[]>([]);
   const [newWord, setNewWord] = useState({ word: '', definition: '', example: '', emoji: '📖' });
+  const [isGeneratingQuestions, setIsGeneratingQuestions] = useState(false);
+  const [genQuestionsError, setGenQuestionsError] = useState<string | null>(null);
+  const contentTextareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Insert an inline image (![beschrijving](url)) at the cursor position in the content textarea
+  const handleInsertImageInText = () => {
+    const url = window.prompt('Plak hier de link (URL) van de afbeelding:');
+    if (!url || !url.trim()) return;
+    const alt = window.prompt('Korte beschrijving van de afbeelding (optioneel, voor leerlingen met een screenreader):') || '';
+
+    const snippet = `\n\n![${alt.trim()}](${url.trim()})\n\n`;
+    const textarea = contentTextareaRef.current;
+
+    if (textarea) {
+      const start = textarea.selectionStart ?? editorContent.length;
+      const end = textarea.selectionEnd ?? editorContent.length;
+      const newContent = editorContent.slice(0, start) + snippet + editorContent.slice(end);
+      setEditorContent(newContent);
+      // Restore focus and cursor position after the inserted snippet
+      requestAnimationFrame(() => {
+        textarea.focus();
+        const cursorPos = start + snippet.length;
+        textarea.setSelectionRange(cursorPos, cursorPos);
+      });
+    } else {
+      setEditorContent(prev => prev + snippet);
+    }
+  };
+
+  // Ask AI to suggest comprehension questions + difficult words for the current text
+  const handleGenerateQuestionsForText = async () => {
+    if (!editorContent.trim()) {
+      setGenQuestionsError('Voeg eerst een leestekst toe voor je vragen laat genereren.');
+      return;
+    }
+
+    setIsGeneratingQuestions(true);
+    setGenQuestionsError(null);
+
+    try {
+      const response = await fetch('/api/generate-questions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content: stripInlineImages(editorContent),
+          level: editorLevel,
+          existingQuestionCount: editorQuestions.length
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Deze functie heeft een AI-server nodig die hier niet beschikbaar is.');
+      }
+
+      const data = await response.json();
+      if (data.data) {
+        const suggested = data.data;
+        const newQuestions: Question[] = (suggested.questions || []).map((q: any, idx: number) => ({
+          id: `q-${Date.now()}-${idx}`,
+          question: q.question,
+          options: q.options,
+          correctIndex: q.correctIndex,
+          explanation: q.explanation,
+          type: (q.type === 'vocabulary' ? 'vocabulary' : 'comprehension') as 'comprehension' | 'vocabulary'
+        }));
+        setEditorQuestions(prev => [...prev, ...newQuestions]);
+
+        const newWords: DifficultWord[] = (suggested.difficultWords || []).map((w: any) => ({
+          word: w.word,
+          definition: w.definition,
+          example: w.example,
+          emoji: w.emoji,
+          syllableSplit: w.syllableSplit
+        }));
+        // Avoid adding duplicate words that are already in the list
+        setEditorDiffWords(prev => {
+          const existingLower = new Set(prev.map(w => w.word.toLowerCase()));
+          const filtered = newWords.filter(w => !existingLower.has(w.word.toLowerCase()));
+          return [...prev, ...filtered];
+        });
+      } else {
+        throw new Error('Geen bruikbare AI-respons ontvangen.');
+      }
+    } catch (err: any) {
+      setGenQuestionsError(err.message || 'Fout bij het genereren van vragen. Voeg zelf vragen toe hieronder.');
+    } finally {
+      setIsGeneratingQuestions(false);
+    }
+  };
 
   // Settings tab state
   const [teacherName, setTeacherName] = useState(teacherSettings.teacherName);
@@ -269,8 +358,8 @@ export const TeacherStudio: React.FC<TeacherStudioProps> = ({
       category: editorCategory.trim() || 'Algemeen',
       content: editorContent.trim(),
       image: editorImage.trim() || undefined,
-      readingTimeMinutes: Math.max(1, Math.round(editorContent.split(/\s+/).length / 75)),
-      wordCount: editorContent.split(/\s+/).length,
+      readingTimeMinutes: Math.max(1, Math.round(stripInlineImages(editorContent).split(/\s+/).filter(Boolean).length / 75)),
+      wordCount: stripInlineImages(editorContent).split(/\s+/).filter(Boolean).length,
       difficultWords: editorDiffWords,
       questions: editorQuestions,
       createdDate: editingStory?.createdDate || new Date().toISOString().split('T')[0]
@@ -288,6 +377,31 @@ export const TeacherStudio: React.FC<TeacherStudioProps> = ({
 
   const handleRemoveDifficultWord = (index: number) => {
     setEditorDiffWords(prev => prev.filter((_, i) => i !== index));
+  };
+
+  // Manual question form + handlers
+  const [newQuestion, setNewQuestion] = useState({
+    question: '',
+    options: ['', '', '', ''],
+    correctIndex: 0,
+    explanation: ''
+  });
+
+  const handleAddQuestion = () => {
+    if (!newQuestion.question.trim() || newQuestion.options.some(o => !o.trim())) return;
+    setEditorQuestions(prev => [...prev, {
+      id: `q-${Date.now()}`,
+      question: newQuestion.question.trim(),
+      options: newQuestion.options.map(o => o.trim()),
+      correctIndex: newQuestion.correctIndex,
+      explanation: newQuestion.explanation.trim(),
+      type: 'comprehension'
+    }]);
+    setNewQuestion({ question: '', options: ['', '', '', ''], correctIndex: 0, explanation: '' });
+  };
+
+  const handleRemoveQuestion = (id: string) => {
+    setEditorQuestions(prev => prev.filter(q => q.id !== id));
   };
 
   const handleSaveSettings = () => {
@@ -702,12 +816,23 @@ export const TeacherStudio: React.FC<TeacherStudioProps> = ({
                     </span>
                   </label>
                   <textarea
+                    ref={contentTextareaRef}
                     rows={8}
                     value={editorContent}
                     onChange={(e) => setEditorContent(e.target.value)}
                     placeholder="Typ hier de leestekst..."
                     className="w-full p-4 bg-stone-50 border border-stone-200 rounded-2xl text-sm leading-relaxed outline-hidden focus:ring-2 focus:ring-amber-500"
                   />
+                  <div className="flex items-center gap-2 mt-2">
+                    <button
+                      type="button"
+                      onClick={handleInsertImageInText}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-amber-50 border border-amber-200 text-amber-800 text-xs font-bold rounded-xl cursor-pointer"
+                    >
+                      🖼️ Afbeelding invoegen op cursorpositie
+                    </button>
+                    <span className="text-[11px] text-stone-400">Plaatst een nieuwe alinea met een afbeelding tussen de tekst.</span>
+                  </div>
                 </div>
 
                 {/* Difficult words manager */}
@@ -752,6 +877,127 @@ export const TeacherStudio: React.FC<TeacherStudioProps> = ({
                       className="px-3 py-2 bg-amber-500 text-white rounded-xl text-xs font-bold hover:bg-amber-600 transition-colors cursor-pointer"
                     >
                       + Woord toevoegen
+                    </button>
+                  </div>
+                </div>
+
+                {/* Questions manager */}
+                <div className="mb-6 p-4 bg-stone-50 rounded-2xl border border-stone-200">
+                  <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-stone-800 flex items-center gap-1.5">
+                      <span>Begripsvragen ({editorQuestions.length})</span>
+                    </h4>
+                    <button
+                      type="button"
+                      onClick={handleGenerateQuestionsForText}
+                      disabled={isGeneratingQuestions}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-60 text-white text-xs font-bold rounded-xl cursor-pointer transition-colors"
+                    >
+                      {isGeneratingQuestions ? (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          Bezig met genereren...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="w-3.5 h-3.5" />
+                          Genereer vragen met AI
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  {genQuestionsError && (
+                    <p className="text-xs font-bold text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2 mb-3">
+                      {genQuestionsError}
+                    </p>
+                  )}
+
+                  <p className="text-[11px] text-stone-500 mb-3">
+                    De AI stelt vragen en antwoorden voor op basis van de leestekst hierboven - controleer en pas ze gerust aan voor je opslaat.
+                  </p>
+
+                  <div className="space-y-3 mb-4">
+                    {editorQuestions.map((q, qIdx) => (
+                      <div key={q.id} className="bg-white p-3 rounded-xl border border-stone-200">
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="text-sm font-bold text-stone-900">{qIdx + 1}. {q.question}</p>
+                          <button
+                            onClick={() => handleRemoveQuestion(q.id)}
+                            className="text-stone-400 hover:text-red-600 cursor-pointer shrink-0"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 mt-2">
+                          {q.options.map((opt, oIdx) => (
+                            <div
+                              key={oIdx}
+                              className={`text-xs px-2.5 py-1.5 rounded-lg border ${
+                                oIdx === q.correctIndex
+                                  ? 'bg-green-50 border-green-300 text-green-800 font-bold'
+                                  : 'bg-stone-50 border-stone-200 text-stone-600'
+                              }`}
+                            >
+                              {oIdx === q.correctIndex ? '✓ ' : ''}{opt}
+                            </div>
+                          ))}
+                        </div>
+                        {q.explanation && (
+                          <p className="text-[11px] text-stone-500 mt-2 italic">💡 {q.explanation}</p>
+                        )}
+                      </div>
+                    ))}
+                    {editorQuestions.length === 0 && (
+                      <p className="text-xs text-stone-400 italic">Nog geen vragen. Gebruik de AI-knop hierboven, of voeg er hieronder zelf een toe.</p>
+                    )}
+                  </div>
+
+                  {/* Manual question add form */}
+                  <div className="bg-white p-3 rounded-xl border border-dashed border-stone-300 space-y-2">
+                    <input
+                      type="text"
+                      placeholder="Nieuwe vraag..."
+                      value={newQuestion.question}
+                      onChange={(e) => setNewQuestion({ ...newQuestion, question: e.target.value })}
+                      className="w-full p-2 bg-stone-50 border border-stone-200 rounded-lg text-xs"
+                    />
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                      {newQuestion.options.map((opt, oIdx) => (
+                        <div key={oIdx} className="flex items-center gap-1.5">
+                          <input
+                            type="radio"
+                            name="correctOption"
+                            checked={newQuestion.correctIndex === oIdx}
+                            onChange={() => setNewQuestion({ ...newQuestion, correctIndex: oIdx })}
+                            title="Markeer als juist antwoord"
+                          />
+                          <input
+                            type="text"
+                            placeholder={`Optie ${oIdx + 1}${oIdx === newQuestion.correctIndex ? ' (juist)' : ''}`}
+                            value={opt}
+                            onChange={(e) => {
+                              const opts = [...newQuestion.options];
+                              opts[oIdx] = e.target.value;
+                              setNewQuestion({ ...newQuestion, options: opts });
+                            }}
+                            className="flex-1 p-2 bg-stone-50 border border-stone-200 rounded-lg text-xs"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="Uitleg/feedback bij het juiste antwoord (optioneel)"
+                      value={newQuestion.explanation}
+                      onChange={(e) => setNewQuestion({ ...newQuestion, explanation: e.target.value })}
+                      className="w-full p-2 bg-stone-50 border border-stone-200 rounded-lg text-xs"
+                    />
+                    <button
+                      onClick={handleAddQuestion}
+                      className="px-3 py-2 bg-stone-900 text-white rounded-xl text-xs font-bold hover:bg-stone-800 transition-colors cursor-pointer"
+                    >
+                      + Vraag toevoegen
                     </button>
                   </div>
                 </div>
