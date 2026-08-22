@@ -22,7 +22,11 @@ export const handler: Handler = async (event) => {
       };
     }
 
-    const store = getStore('story-images');
+    const store = getStore({
+      name: 'story-images',
+      siteID: process.env.SITE_ID,
+      token: process.env.NETLIFY_BLOBS_TOKEN
+    });
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
     await store.set(id, buffer, {
