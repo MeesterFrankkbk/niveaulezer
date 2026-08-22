@@ -38,7 +38,7 @@ Genereer:
 5. Een passende Unsplash keyword zoekterm voor een illustratie.`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.6-flash',
       contents: prompt,
       config: {
         responseMimeType: 'application/json',
