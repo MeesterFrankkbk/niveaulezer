@@ -37,6 +37,7 @@ export const ReadingView: React.FC<ReadingViewProps> = ({
   onBackToOverview
 }) => {
   const [selectedWord, setSelectedWord] = useState<DifficultWord | null>(null);
+  const [lightboxImage, setLightboxImage] = useState<{ url: string; alt: string } | null>(null);
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const [isPausedAudio, setIsPausedAudio] = useState(false);
   const [spokenCharIndex, setSpokenCharIndex] = useState<number | null>(null);
@@ -143,15 +144,20 @@ export const ReadingView: React.FC<ReadingViewProps> = ({
       if (imageMatch) {
         const [, altText, imgUrl] = imageMatch;
         return (
-          <figure key={pIdx} className="mb-6">
-            <div className="rounded-2xl overflow-hidden shadow-md w-full bg-stone-100 border border-stone-200">
+          <figure key={pIdx} className="mb-6 flex flex-col items-center">
+            <button
+              type="button"
+              onClick={() => setLightboxImage({ url: imgUrl, alt: altText || story.title })}
+              className="rounded-2xl overflow-hidden shadow-md bg-stone-100 border border-stone-200 cursor-zoom-in hover:opacity-90 transition-opacity"
+              title="Klik om te vergroten"
+            >
               <img
                 src={imgUrl}
                 alt={altText || story.title}
                 referrerPolicy="no-referrer"
-                className="w-full h-auto object-cover max-h-96"
+                className="max-w-[220px] sm:max-w-[280px] max-h-56 w-auto h-auto object-cover"
               />
-            </div>
+            </button>
             {altText && (
               <figcaption className="text-center text-xs text-stone-500 mt-2 italic">{altText}</figcaption>
             )}
@@ -353,6 +359,34 @@ export const ReadingView: React.FC<ReadingViewProps> = ({
         onClose={() => setSelectedWord(null)}
         voiceURI={settings.selectedVoiceURI}
       />
+
+      {/* Image Lightbox */}
+      {lightboxImage && (
+        <div
+          className="fixed inset-0 bg-stone-900/80 z-50 flex items-center justify-center p-4 cursor-zoom-out"
+          onClick={() => setLightboxImage(null)}
+        >
+          <button
+            onClick={() => setLightboxImage(null)}
+            className="absolute top-4 right-4 sm:top-6 sm:right-6 w-10 h-10 rounded-full bg-white/90 hover:bg-white flex items-center justify-center text-stone-700 shadow-lg cursor-pointer"
+            aria-label="Sluiten"
+          >
+            ✕
+          </button>
+          <img
+            src={lightboxImage.url}
+            alt={lightboxImage.alt}
+            referrerPolicy="no-referrer"
+            onClick={(e) => e.stopPropagation()}
+            className="max-w-full max-h-[85vh] rounded-2xl shadow-2xl object-contain cursor-default"
+          />
+          {lightboxImage.alt && (
+            <p className="absolute bottom-6 left-1/2 -translate-x-1/2 text-white/90 text-sm italic bg-stone-900/60 px-4 py-1.5 rounded-full">
+              {lightboxImage.alt}
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 };
