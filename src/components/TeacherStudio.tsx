@@ -54,6 +54,21 @@ export const TeacherStudio: React.FC<TeacherStudioProps> = ({
   const [importError, setImportError] = useState<string | null>(null);
   const [importSuccess, setImportSuccess] = useState<string | null>(null);
 
+  // Bulk import (multiple Hot Potatoes files at once)
+  interface BulkImportItem {
+    id: string;
+    fileName: string;
+    rawContent: string;
+    status: 'pending' | 'processing' | 'done' | 'error';
+    story?: Story;
+    usedFallback?: boolean;
+    errorMsg?: string;
+    selected: boolean;
+  }
+  const [bulkItems, setBulkItems] = useState<BulkImportItem[]>([]);
+  const [isBulkProcessing, setIsBulkProcessing] = useState(false);
+  const bulkFileInputRef = useRef<HTMLInputElement>(null);
+
   // AI Generator state
   const [genLevel, setGenLevel] = useState<AviLevel>('M4');
   const [genTheme, setGenTheme] = useState('Avontuur en vriendschap');
@@ -331,6 +346,131 @@ export const TeacherStudio: React.FC<TeacherStudioProps> = ({
     } finally {
       setIsImporting(false);
     }
+  };
+
+  // Bulk import: read selected files into the queue
+  const handleBulkFilesSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []) as File[];
+    e.target.value = '';
+    if (!files.length) return;
+
+    files.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const rawContent = String(reader.result || '');
+        setBulkItems(prev => [...prev, {
+          id: `bulk-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          fileName: file.name,
+          rawContent,
+          status: 'pending',
+          selected: true
+        }]);
+      };
+      reader.readAsText(file);
+    });
+  };
+
+  const handleRemoveBulkItem = (id: string) => {
+    setBulkItems(prev => prev.filter(item => item.id !== id));
+  };
+
+  const handleToggleBulkItemSelected = (id: string) => {
+    setBulkItems(prev => prev.map(item => item.id === id ? { ...item, selected: !item.selected } : item));
+  };
+
+  // Process every pending item in the bulk queue, one at a time (sequential -
+  // safer for the AI service than firing them all at once)
+  const handleProcessBulkImport = async () => {
+    setIsBulkProcessing(true);
+
+    // Snapshot the current pending items to process, in order
+    const pendingIds = bulkItems.filter(i => i.status === 'pending').map(i => i.id);
+
+    for (const id of pendingIds) {
+      setBulkItems(prev => prev.map(item => item.id === id ? { ...item, status: 'processing' } : item));
+
+      const current = bulkItems.find(i => i.id === id);
+      const rawContent = current?.rawContent || '';
+      const fileName = current?.fileName || 'tekst';
+
+      try {
+        const response = await fetch('/api/parse-hotpotatoes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ rawContent, sourceUrl: fileName })
+        });
+
+        if (!response.ok) throw new Error('AI-service niet beschikbaar.');
+
+        const data = await response.json();
+        if (!data.data) throw new Error('Geen bruikbare AI-respons.');
+
+        const parsed = data.data;
+        const newStory: Story = {
+          id: `story-imported-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          code: parsed.code || `TK0${Math.floor(Math.random() * 9) + 1}-01`,
+          title: parsed.title || fileName.replace(/\.(htm|html|txt)$/i, ''),
+          level: (parsed.level as AviLevel) || 'M4',
+          category: parsed.category || 'Niveaulezen',
+          content: parsed.content || rawContent,
+          image: parsed.image || 'https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?w=800&auto=format&fit=crop&q=80',
+          readingTimeMinutes: Math.max(1, Math.round((parsed.content?.split(/\s+/).length || 100) / 75)),
+          wordCount: parsed.content?.split(/\s+/).length || 100,
+          difficultWords: parsed.difficultWords || [],
+          questions: parsed.questions || [],
+          sourceUrl: fileName,
+          createdDate: new Date().toISOString().split('T')[0]
+        };
+
+        setBulkItems(prev => prev.map(item => item.id === id ? { ...item, status: 'done', story: newStory } : item));
+      } catch (err: any) {
+        // Fallback: build a basic story from the raw text so nothing is lost,
+        // same approach as the single-file import.
+        const metrics = calculateAviLevel(rawContent);
+        const fallbackStory: Story = {
+          id: `story-imported-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          code: `TK02-01`,
+          title: fileName.replace(/\.(htm|html|txt)$/i, '').replace(/-/g, ' '),
+          level: metrics.level,
+          category: 'Geïmporteerd',
+          content: rawContent,
+          image: 'https://images.unsplash.com/photo-1512820790803-83ca734da794?w=800&auto=format&fit=crop&q=80',
+          readingTimeMinutes: Math.max(1, Math.round(metrics.wordCount / 75)),
+          wordCount: metrics.wordCount,
+          difficultWords: [
+            { word: 'voorbeeld', definition: 'Iets wat laat zien hoe het moet.', emoji: '📖' }
+          ],
+          questions: [
+            {
+              id: 'q1',
+              question: 'Waarover gaat deze tekst?',
+              options: ['Over het hoofdthema in het verhaal', 'Over een kasteel', 'Over de school', 'Over sport'],
+              correctIndex: 0,
+              explanation: 'Het juiste antwoord vind je in het begin van de tekst.',
+              type: 'comprehension'
+            }
+          ],
+          sourceUrl: fileName,
+          createdDate: new Date().toISOString().split('T')[0]
+        };
+
+        setBulkItems(prev => prev.map(item => item.id === id
+          ? { ...item, status: 'done', story: fallbackStory, usedFallback: true, errorMsg: err.message }
+          : item
+        ));
+      }
+    }
+
+    setIsBulkProcessing(false);
+  };
+
+  const handleSaveAllBulkItems = () => {
+    const toSave = bulkItems.filter(i => i.status === 'done' && i.selected && i.story);
+    toSave.forEach(item => {
+      if (item.story) onSaveStory(item.story);
+    });
+    setBulkItems(prev => prev.filter(item => !(item.status === 'done' && item.selected)));
+    setImportSuccess(`${toSave.length} teksten opgeslagen in de bibliotheek!`);
   };
 
   // Generate Story with AI
@@ -657,6 +797,99 @@ export const TeacherStudio: React.FC<TeacherStudioProps> = ({
                     </button>
                   </div>
                 </div>
+              </div>
+
+              {/* Bulk import: multiple files at once */}
+              <div className="bg-white p-6 rounded-3xl border border-amber-200 shadow-xs">
+                <h3 className="text-lg font-bold text-stone-900 font-lexend flex items-center gap-2 mb-2">
+                  <Upload className="w-5 h-5 text-amber-600" />
+                  Bulk-import: meerdere teksten tegelijk
+                </h3>
+                <p className="text-xs text-stone-600 leading-relaxed mb-4">
+                  Kies meerdere .htm/.html/.txt bestanden tegelijk (bv. al je resterende Hot Potatoes-oefeningen). De AI verwerkt ze één voor één; je krijgt daarna een overzicht om te controleren voor je alles bewaart.
+                </p>
+
+                <button
+                  type="button"
+                  onClick={() => bulkFileInputRef.current?.click()}
+                  className="px-4 py-2.5 bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-bold rounded-xl cursor-pointer"
+                >
+                  + Bestanden kiezen
+                </button>
+                <input
+                  ref={bulkFileInputRef}
+                  type="file"
+                  multiple
+                  accept=".htm,.html,.txt"
+                  onChange={handleBulkFilesSelected}
+                  className="hidden"
+                />
+
+                {bulkItems.length > 0 && (
+                  <div className="mt-4 space-y-2">
+                    {bulkItems.map(item => (
+                      <div key={item.id} className="flex items-center gap-3 bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5">
+                        {item.status === 'done' && (
+                          <input
+                            type="checkbox"
+                            checked={item.selected}
+                            onChange={() => handleToggleBulkItemSelected(item.id)}
+                            className="w-4 h-4 shrink-0"
+                          />
+                        )}
+                        <div className="flex-1 min-w-0">
+                          {item.status === 'done' && item.story ? (
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-xs font-bold text-stone-900 truncate">{item.story.title}</span>
+                              <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-lg bg-amber-100 text-amber-800">{item.story.level}</span>
+                              {item.usedFallback && (
+                                <span className="text-[10px] text-stone-500 italic">basisimport, controleer vragen</span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-xs text-stone-600 truncate block">{item.fileName}</span>
+                          )}
+                        </div>
+                        <div className="shrink-0 text-xs">
+                          {item.status === 'pending' && <span className="text-stone-400">Wacht...</span>}
+                          {item.status === 'processing' && (
+                            <span className="text-amber-600 flex items-center gap-1">
+                              <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Bezig...
+                            </span>
+                          )}
+                          {item.status === 'done' && <CheckCircle className="w-4 h-4 text-green-600" />}
+                        </div>
+                        <button
+                          onClick={() => handleRemoveBulkItem(item.id)}
+                          className="text-stone-400 hover:text-red-600 cursor-pointer shrink-0"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {bulkItems.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mt-4">
+                    <button
+                      onClick={handleProcessBulkImport}
+                      disabled={isBulkProcessing || !bulkItems.some(i => i.status === 'pending')}
+                      className="px-5 py-2.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white text-xs font-bold rounded-xl cursor-pointer flex items-center gap-1.5"
+                    >
+                      {isBulkProcessing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                      {isBulkProcessing ? 'Bezig met verwerken...' : 'Verwerk alles met AI'}
+                    </button>
+                    <button
+                      onClick={handleSaveAllBulkItems}
+                      disabled={!bulkItems.some(i => i.status === 'done' && i.selected)}
+                      className="px-5 py-2.5 bg-stone-900 hover:bg-stone-800 disabled:opacity-50 text-white text-xs font-bold rounded-xl cursor-pointer flex items-center gap-1.5"
+                    >
+                      <Save className="w-3.5 h-3.5" />
+                      Sla geselecteerde teksten op in bibliotheek
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Preloaded links info */}
