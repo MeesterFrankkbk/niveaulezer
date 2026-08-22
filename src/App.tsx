@@ -333,10 +333,10 @@ export default function App() {
           <div className="space-y-4 mb-8">
             
             {/* Search and Quick Filters */}
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="flex flex-wrap items-center gap-3">
               
               {/* Level Selector Pills */}
-              <div className="flex items-center gap-1.5 overflow-x-auto min-w-0 w-full sm:w-auto pb-2 sm:pb-0 scrollbar-none">
+              <div className="flex flex-wrap items-center gap-1.5">
                 <button
                   onClick={() => setSelectedLevelFilter('ALL')}
                   className={`px-4 py-2 rounded-2xl text-xs font-extrabold font-lexend transition-all shrink-0 cursor-pointer ${
@@ -371,7 +371,7 @@ export default function App() {
               </div>
 
               {/* Search Bar */}
-              <div className="relative w-full sm:w-72 shrink-0">
+              <div className="relative w-full sm:w-72 sm:ml-auto">
                 <Search className="w-4 h-4 text-stone-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
@@ -492,7 +492,7 @@ export default function App() {
       {/* Footer */}
       <footer className="mt-auto py-6 border-t border-stone-200 bg-white text-center text-xs text-stone-500 font-medium">
         <p>
-          NiveauLezer • Ontworpen voor Vlaams basisonderwijs • Eenvoudig Hot Potatoes importeren & opvolgen
+          NiveauLezer
         </p>
       </footer>
 
