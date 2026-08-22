@@ -18,6 +18,18 @@ export interface ReadabilityMetrics {
  * AVI-analysetool (avi-analyse-tool.netlify.app), for consistent results
  * between the two tools.
  */
+/**
+ * Removes inline image markdown (![beschrijving](url)) from story text,
+ * used before readability calculations, word counts, or text-to-speech,
+ * so the syntax itself is never counted or read aloud.
+ */
+export function stripInlineImages(text: string): string {
+  return text
+    .split('\n\n')
+    .filter(p => !/^!\[.*?\]\(\S+\)$/.test(p.trim()))
+    .join('\n\n');
+}
+
 export function countDutchSyllables(word: string): number {
   const klinkerGroepen = word.toLowerCase().match(/[aeiouyàáâäèéêëìíîïòóôöùúûü]+/g);
   return Math.max(1, klinkerGroepen ? klinkerGroepen.length : 1);
@@ -51,7 +63,7 @@ export function splitDutchSyllables(word: string): string {
  * ~5-punten-per-niveau pattern, not an independently validated scale.
  */
 export function calculateAviLevel(text: string): ReadabilityMetrics {
-  const cleanText = text.trim();
+  const cleanText = stripInlineImages(text).trim();
   if (!cleanText) {
     return {
       level: 'AVI Start',
