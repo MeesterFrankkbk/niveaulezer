@@ -1,0 +1,48 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+}
+
+.font-lexend {
+  font-family: 'Lexend', sans-serif !important;
+}
+
+.font-comic {
+  font-family: 'Comic Neue', cursive, sans-serif !important;
+}
+
+.font-atkinson {
+  font-family: 'Atkinson Hyperlegible', sans-serif !important;
+}
+
+.font-fredoka {
+  font-family: 'Fredoka', cursive, sans-serif !important;
+}
+
+.font-dyslexic {
+  font-family: 'Lexend', 'Atkinson Hyperlegible', sans-serif !important;
+  letter-spacing: 0.05em;
+  word-spacing: 0.15em;
+  line-height: 2 !important;
+}
+
+/* Custom subtle scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #f5f5f4;
+  border-radius: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: #d6d3d1;
+  border-radius: 8px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #a8a29e;
+}
+

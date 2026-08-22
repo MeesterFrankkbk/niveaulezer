@@ -1,0 +1,10 @@
+{
+  "name": "NiveauLezer - Leer Lezen op Jouw Niveau",
+  "description": "Interactief niveaulezen platform met Vlaamse voorleesstem, karaoke markering, dyslexie-ondersteuning, woordenschat popups, opnamefunctie en Hot Potatoes importer.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
