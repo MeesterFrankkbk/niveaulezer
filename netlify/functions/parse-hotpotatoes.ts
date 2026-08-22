@@ -38,7 +38,7 @@ Extraheer en structureer deze leesoefening zorgvuldig:
 5. Vind de moeilijke woorden en maak er kindvriendelijke definities met emoji en lettergrepen bij.`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.6-flash',
       contents: prompt,
       config: {
         responseMimeType: 'application/json',
