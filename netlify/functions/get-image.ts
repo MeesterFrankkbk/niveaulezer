@@ -1,46 +1,33 @@
 import type { Handler } from '@netlify/functions';
 import { getStore } from '@netlify/blobs';
 
-const MAX_SIZE_BYTES = 5 * 1024 * 1024; // 5MB per afbeelding
-
 export const handler: Handler = async (event) => {
-  if (event.httpMethod !== 'POST') {
-    return { statusCode: 405, body: JSON.stringify({ error: 'Method not allowed' }) };
+  const id = event.queryStringParameters?.id;
+  if (!id) {
+    return { statusCode: 400, body: 'Ontbrekende afbeelding-id.' };
   }
 
   try {
-    const { imageBase64, filename, contentType } = JSON.parse(event.body || '{}');
-    if (!imageBase64) {
-      return { statusCode: 400, body: JSON.stringify({ error: 'Geen afbeelding ontvangen.' }) };
-    }
-
-    const buffer = Buffer.from(imageBase64, 'base64');
-    if (buffer.length > MAX_SIZE_BYTES) {
-      return {
-        statusCode: 400,
-        body: JSON.stringify({ error: 'Deze afbeelding is groter dan 5MB. Kies een kleiner bestand of comprimeer de foto eerst.' })
-      };
-    }
-
     const store = getStore('story-images');
-    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    const result = await store.getWithMetadata(id, { type: 'arrayBuffer' });
 
-    await store.set(id, buffer, {
-      metadata: {
-        contentType: contentType || 'image/jpeg',
-        filename: filename || id
-      }
-    });
+    if (!result || !result.data) {
+      return { statusCode: 404, body: 'Afbeelding niet gevonden.' };
+    }
+
+    const contentType = (result.metadata?.contentType as string) || 'image/jpeg';
 
     return {
       statusCode: 200,
-      body: JSON.stringify({ success: true, url: `/api/get-image?id=${id}` })
+      headers: {
+        'Content-Type': contentType,
+        'Cache-Control': 'public, max-age=31536000, immutable'
+      },
+      body: Buffer.from(result.data as ArrayBuffer).toString('base64'),
+      isBase64Encoded: true
     };
   } catch (error: any) {
-    console.error('Error uploading image:', error);
-    return {
-      statusCode: 500,
-      body: JSON.stringify({ error: error.message || 'Fout bij het uploaden van de afbeelding.' })
-    };
+    console.error('Error fetching image:', error);
+    return { statusCode: 500, body: 'Fout bij het ophalen van de afbeelding.' };
   }
 };
