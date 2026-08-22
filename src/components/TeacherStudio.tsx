@@ -380,7 +380,7 @@ export const TeacherStudio: React.FC<TeacherStudioProps> = ({
           </button>
 
           <button
-            onClick={() => openInEditor()}
+            onClick={() => setActiveTab('editor')}
             className={`px-4 py-2 rounded-xl transition-all flex items-center gap-2 cursor-pointer ${
               activeTab === 'editor' ? 'bg-white text-stone-900 shadow-xs' : 'text-stone-600 hover:text-stone-900'
             }`}
@@ -597,6 +597,41 @@ export const TeacherStudio: React.FC<TeacherStudioProps> = ({
                     <span className="px-2 py-0.5 bg-amber-500 text-white font-black rounded-lg text-xs font-lexend">
                       {liveMetrics.level}
                     </span>
+                  </div>
+                </div>
+
+                {/* Existing story picker: load any story from the library into the editor */}
+                <div className="mb-6 pb-6 border-b border-stone-100">
+                  <label className="block text-xs font-bold text-stone-600 mb-2 font-lexend">
+                    Bestaande tekst bewerken (bv. geïmporteerd of AI-gegenereerd)
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={editingStory?.id || ''}
+                      onChange={(e) => {
+                        const chosen = stories.find(s => s.id === e.target.value);
+                        if (chosen) openInEditor(chosen);
+                      }}
+                      className="flex-1 p-2.5 bg-stone-50 border border-stone-200 rounded-xl text-sm outline-hidden focus:ring-2 focus:ring-amber-500 cursor-pointer"
+                    >
+                      <option value="">— Kies een tekst uit je bibliotheek —</option>
+                      {[...stories]
+                        .sort((a, b) => a.title.localeCompare(b.title))
+                        .map(s => (
+                          <option key={s.id} value={s.id}>
+                            {s.title} ({s.level}{s.code ? ` · ${s.code}` : ''})
+                          </option>
+                        ))}
+                    </select>
+                    {editingStory && (
+                      <button
+                        type="button"
+                        onClick={() => openInEditor()}
+                        className="px-3 py-2.5 bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-bold rounded-xl cursor-pointer whitespace-nowrap"
+                      >
+                        + Nieuwe tekst starten
+                      </button>
+                    )}
                   </div>
                 </div>
 
