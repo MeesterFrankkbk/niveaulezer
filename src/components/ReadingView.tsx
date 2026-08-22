@@ -5,7 +5,7 @@ import { ReadingRuler } from './ReadingRuler';
 import { WordPopupModal } from './WordPopupModal';
 import { AudioRecorder } from './AudioRecorder';
 import { createSpeechController, SpeechVoiceOption } from '../utils/speech';
-import { splitDutchSyllables } from '../utils/aviCalculator';
+import { splitDutchSyllables, stripInlineImages } from '../utils/aviCalculator';
 import { AVI_COLORS } from '../utils/aviCalculator';
 import { 
   Clock, 
@@ -69,7 +69,7 @@ export const ReadingView: React.FC<ReadingViewProps> = ({
     setIsPlayingAudio(true);
     setIsPausedAudio(false);
 
-    speechControllerRef.current.speak(story.content, {
+    speechControllerRef.current.speak(stripInlineImages(story.content), {
       speed: settings.audioSpeed,
       voiceURI: settings.selectedVoiceURI,
       onWordBoundary: (charIndex) => {
@@ -129,12 +129,36 @@ export const ReadingView: React.FC<ReadingViewProps> = ({
     }
   };
 
-  // Render text paragraphs with interactive clickable words and karaoke boundaries
+  // Render text paragraphs with interactive clickable words, karaoke boundaries,
+  // and inline images (paragraphs written as ![beschrijving](url))
   const renderParagraphs = () => {
     const paragraphs = story.content.split('\n\n');
     let runningCharOffset = 0;
+    const imageLineRegex = /^!\[(.*?)\]\((\S+)\)$/;
 
     return paragraphs.map((paragraph, pIdx) => {
+      const trimmed = paragraph.trim();
+      const imageMatch = trimmed.match(imageLineRegex);
+
+      if (imageMatch) {
+        const [, altText, imgUrl] = imageMatch;
+        return (
+          <figure key={pIdx} className="mb-6">
+            <div className="rounded-2xl overflow-hidden shadow-md w-full bg-stone-100 border border-stone-200">
+              <img
+                src={imgUrl}
+                alt={altText || story.title}
+                referrerPolicy="no-referrer"
+                className="w-full h-auto object-cover max-h-96"
+              />
+            </div>
+            {altText && (
+              <figcaption className="text-center text-xs text-stone-500 mt-2 italic">{altText}</figcaption>
+            )}
+          </figure>
+        );
+      }
+
       const words = paragraph.split(/\s+/);
       const paragraphOffset = runningCharOffset;
       runningCharOffset += paragraph.length + 2;
