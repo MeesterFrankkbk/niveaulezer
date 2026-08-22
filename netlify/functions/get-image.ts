@@ -8,7 +8,11 @@ export const handler: Handler = async (event) => {
   }
 
   try {
-    const store = getStore('story-images');
+    const store = getStore({
+      name: 'story-images',
+      siteID: process.env.SITE_ID,
+      token: process.env.NETLIFY_BLOBS_TOKEN
+    });
     const result = await store.getWithMetadata(id, { type: 'arrayBuffer' });
 
     if (!result || !result.data) {
