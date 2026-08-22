@@ -14,23 +14,13 @@ export interface ReadabilityMetrics {
 }
 
 /**
- * Calculates syllables count approximately for Dutch words
+ * Syllable count using the exact same simple vowel-group method as the
+ * AVI-analysetool (avi-analyse-tool.netlify.app), for consistent results
+ * between the two tools.
  */
 export function countDutchSyllables(word: string): number {
-  const cleanWord = word.toLowerCase().replace(/[^a-zà-ÿ]/g, '');
-  if (cleanWord.length <= 3) return 1;
-
-  // Dutch vowel diphthongs and clusters
-  const diphthongs = /(aa|ee|oo|uu|ie|oe|ij|ei|ui|ou|au|aai|oei|ooi|eeu|ieu)/g;
-  const singleVowels = /[aeiouyà-ÿ]/g;
-
-  // Replace diphthongs with single placeholder
-  const reduced = cleanWord.replace(diphthongs, 'X');
-  const matches = reduced.match(singleVowels);
-  const diphthongMatches = cleanWord.match(diphthongs);
-
-  const count = (matches ? matches.length : 0) + (diphthongMatches ? diphthongMatches.length : 0);
-  return Math.max(1, count);
+  const klinkerGroepen = word.toLowerCase().match(/[aeiouyàáâäèéêëìíîïòóôöùúûü]+/g);
+  return Math.max(1, klinkerGroepen ? klinkerGroepen.length : 1);
 }
 
 /**
@@ -50,7 +40,15 @@ export function splitDutchSyllables(word: string): string {
 }
 
 /**
- * Evaluates the Dutch AVI Reading Level for a given text
+ * Evaluates the Dutch AVI Reading Level for a given text using the
+ * Leesindex A (formule van Brouwer): 195 - 2*(gem. zinslengte) - 66*(gem. lettergrepen/woord).
+ * This mirrors the AVI-analysetool exactly (same formula, same syllable counting,
+ * same reference table for oud niveau 5-9) so both tools agree.
+ *
+ * Below oud niveau 5 (score > 99, roughly AVI Start t.e.m. M5) and above oud
+ * niveau 9 (score < 74, AVI Plus) the source tool has no validated reference
+ * values either - those bands here are a reasonable extrapolation of the same
+ * ~5-punten-per-niveau pattern, not an independently validated scale.
  */
 export function calculateAviLevel(text: string): ReadabilityMetrics {
   const cleanText = text.trim();
@@ -69,86 +67,82 @@ export function calculateAviLevel(text: string): ReadabilityMetrics {
     };
   }
 
-  // Extract sentences
-  const sentences = cleanText
-    .split(/[.!?]+/)
-    .map(s => s.trim())
-    .filter(s => s.length > 0);
-  const sentenceCount = Math.max(1, sentences.length);
+  // Sentences and (raw, unstripped) words - same splitting as the AVI-analysetool
+  const zinnen = cleanText.split(/[.!?]+/).map(z => z.trim()).filter(Boolean);
+  const sentenceCount = Math.max(1, zinnen.length);
+  const rawWoorden = cleanText.split(/\s+/).filter(Boolean);
+  const wordCount = Math.max(1, rawWoorden.length);
 
-  // Extract words
-  const words = cleanText
-    .split(/\s+/)
-    .map(w => w.replace(/[^\w\sà-ÿ-]/g, '').trim())
-    .filter(w => w.length > 0);
-  const wordCount = Math.max(1, words.length);
-
-  const characterCount = words.reduce((acc, w) => acc + w.length, 0);
-  const avgWordLength = +(characterCount / wordCount).toFixed(1);
   const avgSentenceLength = +(wordCount / sentenceCount).toFixed(1);
 
-  // Count complex words (>= 3 syllables or >= 8 letters)
-  let complexWordCount = 0;
-  words.forEach(w => {
-    if (w.length >= 8 || countDutchSyllables(w) >= 3) {
-      complexWordCount++;
-    }
-  });
+  // Syllables per word, using the cleaned word (letters + apostrophe/hyphen only)
+  const cleanedWords = rawWoorden.map(w => w.replace(/[^\wàáâäèéêëìíîïòóôöùúûü'-]/gi, ''));
+  const lettergrepenTotaal = cleanedWords.reduce((som, w) => som + countDutchSyllables(w), 0);
+  const avgSyllablesPerWord = lettergrepenTotaal / wordCount;
 
+  const characterCount = cleanedWords.reduce((acc, w) => acc + w.length, 0);
+  const avgWordLength = +(characterCount / wordCount).toFixed(1);
+
+  let complexWordCount = 0;
+  cleanedWords.forEach(w => {
+    if (w.length >= 8 || countDutchSyllables(w) >= 3) complexWordCount++;
+  });
   const complexWordsPercentage = +((complexWordCount / wordCount) * 100).toFixed(1);
 
-  // AVI scoring metric based on Flemish/Dutch Cito scale
-  // Combined factor: avg sentence length + (avg word length * 2) + (complex percentage * 0.1)
-  const metric = avgSentenceLength * 0.45 + avgWordLength * 2.8 + complexWordsPercentage * 0.15;
+  // Leesindex A (formule van Brouwer) - identiek aan de AVI-analysetool
+  const leesindexA = 195 - 2 * avgSentenceLength - 66 * avgSyllablesPerWord;
 
-  let level: AviLevel = 'M4';
-  let explanation = '';
+  let level: AviLevel;
+  let explanation: string;
 
-  if (metric < 14) {
-    level = 'AVI Start';
-    explanation = 'Korte eenlettergrepige woorden en zeer eenvoudige zinnen. Ideaal voor startende lezers.';
-  } else if (metric < 16) {
-    level = 'M3';
-    explanation = 'Eenvoudige klankzuivere woorden en korte zinnen van 4-6 woorden.';
-  } else if (metric < 18) {
-    level = 'E3';
-    explanation = 'Korte zinnen met tweelettergrepige woorden en bekende lettercombinaties.';
-  } else if (metric < 20) {
-    level = 'M4';
-    explanation = 'Zinnen van gemiddeld 7-9 woorden. Woorden met samengestelde klanken en voorvoegsels.';
-  } else if (metric < 22) {
-    level = 'E4';
-    explanation = 'Vlot leestempo met meerlettergrepige woorden en lichte leestekens.';
-  } else if (metric < 24.5) {
-    level = 'M5';
-    explanation = 'Complexere zinsbouw met bijzinnen en rijkere woordenschat.';
-  } else if (metric < 27) {
-    level = 'E5';
-    explanation = 'Gevarieerde zinsbouw met leenwoorden, figuurlijk taalgebruik en samengestelde zinnen.';
-  } else if (metric < 29.5) {
-    level = 'M6';
-    explanation = 'Rijke woordenschat met langere zinnen en abstracte begrippen.';
-  } else if (metric < 32) {
-    level = 'E6';
-    explanation = 'Gevorderde teksten met moeilijke termen en uitdagende grammaticale structuren.';
-  } else if (metric < 35) {
-    level = 'E7';
-    explanation = 'Complexe teksten voor vlotte lezers met vaktaal en gelaagde thema\'s.';
-  } else {
+  if (leesindexA < 76) {
     level = 'Plus';
-    explanation = 'Hoog niveau met veeleisende woordenschat en complexe tekstopbouw.';
+    explanation = 'Hoog niveau met veeleisende woordenschat en complexe tekstopbouw (Leesindex A < 76).';
+  } else if (leesindexA < 84) {
+    level = 'E7';
+    explanation = 'Complexe teksten voor vlotte lezers met vaktaal en gelaagde thema\'s (komt overeen met oud AVI niveau 8-9).';
+  } else if (leesindexA < 87) {
+    level = 'E7';
+    explanation = 'Gevorderde tekst, vergelijkbaar met het oude AVI niveau 7 (bovenkant).';
+  } else if (leesindexA < 89) {
+    level = 'E6';
+    explanation = 'Gevorderde teksten met moeilijke termen en uitdagende grammaticale structuren (oud AVI niveau 7).';
+  } else if (leesindexA < 94) {
+    level = 'M6';
+    explanation = 'Rijke woordenschat met langere zinnen en abstracte begrippen (oud AVI niveau 6).';
+  } else if (leesindexA < 97) {
+    level = 'E5';
+    explanation = 'Gevarieerde zinsbouw met leenwoorden, figuurlijk taalgebruik en samengestelde zinnen (oud AVI niveau 5, onderkant).';
+  } else if (leesindexA < 100) {
+    level = 'M5';
+    explanation = 'Complexere zinsbouw met bijzinnen en rijkere woordenschat (oud AVI niveau 5, bovenkant).';
+  } else if (leesindexA < 103) {
+    level = 'E4';
+    explanation = 'Vlot leestempo met meerlettergrepige woorden en lichte leestekens. Buiten het gevalideerde bereik van de Leesindex A - richtinggevende schatting.';
+  } else if (leesindexA < 106) {
+    level = 'M4';
+    explanation = 'Zinnen van gemiddeld 7-9 woorden, woorden met samengestelde klanken. Buiten het gevalideerde bereik van de Leesindex A - richtinggevende schatting.';
+  } else if (leesindexA < 109) {
+    level = 'E3';
+    explanation = 'Korte zinnen met tweelettergrepige woorden. Buiten het gevalideerde bereik van de Leesindex A - richtinggevende schatting.';
+  } else if (leesindexA < 112) {
+    level = 'M3';
+    explanation = 'Eenvoudige klankzuivere woorden en korte zinnen. Buiten het gevalideerde bereik van de Leesindex A - richtinggevende schatting.';
+  } else {
+    level = 'AVI Start';
+    explanation = 'Korte eenlettergrepige woorden en zeer eenvoudige zinnen. Buiten het gevalideerde bereik van de Leesindex A - richtinggevende schatting.';
   }
 
   return {
     level,
-    confidence: 90,
+    confidence: leesindexA >= 74 && leesindexA <= 99 ? 90 : 60,
     wordCount,
     sentenceCount,
     characterCount,
     avgWordLength,
     avgSentenceLength,
     complexWordsPercentage,
-    readabilityScore: Math.round(metric * 10) / 10,
+    readabilityScore: Math.round(leesindexA * 10) / 10,
     explanation
   };
 }
