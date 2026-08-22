@@ -16,7 +16,10 @@ import {
   ArrowLeft, 
   Volume2, 
   Award,
-  Zap
+  Zap,
+  Play,
+  Pause,
+  Square
 } from 'lucide-react';
 
 interface ReadingViewProps {
@@ -43,6 +46,7 @@ export const ReadingView: React.FC<ReadingViewProps> = ({
   const [spokenCharIndex, setSpokenCharIndex] = useState<number | null>(null);
   const [readingSeconds, setReadingSeconds] = useState(0);
   const [recordedAudioUrl, setRecordedAudioUrl] = useState<string | undefined>(undefined);
+  const playbackStartOffsetRef = useRef(0);
 
   const speechControllerRef = useRef(createSpeechController());
   const timerRef = useRef<number | null>(null);
@@ -67,14 +71,27 @@ export const ReadingView: React.FC<ReadingViewProps> = ({
       return;
     }
 
+    startReadingFromOffset(0);
+  };
+
+  // Starts (or restarts) reading from a specific character offset in the
+  // (image-syntax-stripped) story text - used both for the toolbar play
+  // button (offset 0) and for clicking a word to start reading from there.
+  const startReadingFromOffset = (offset: number) => {
+    const fullText = stripInlineImages(story.content);
+    const textFromOffset = fullText.slice(offset);
+    if (!textFromOffset.trim()) return;
+
+    playbackStartOffsetRef.current = offset;
     setIsPlayingAudio(true);
     setIsPausedAudio(false);
+    setSpokenCharIndex(offset);
 
-    speechControllerRef.current.speak(stripInlineImages(story.content), {
+    speechControllerRef.current.speak(textFromOffset, {
       speed: settings.audioSpeed,
       voiceURI: settings.selectedVoiceURI,
       onWordBoundary: (charIndex) => {
-        setSpokenCharIndex(charIndex);
+        setSpokenCharIndex(playbackStartOffsetRef.current + charIndex);
       },
       onEnd: () => {
         setIsPlayingAudio(false);
@@ -87,6 +104,12 @@ export const ReadingView: React.FC<ReadingViewProps> = ({
         setSpokenCharIndex(null);
       }
     });
+  };
+
+  // Called when the student/teacher clicks a word in the text: (re)start
+  // reading from that exact point instead of from the beginning.
+  const handleStartReadingFromWord = (wordStart: number) => {
+    startReadingFromOffset(wordStart);
   };
 
   const handlePauseAudio = () => {
@@ -208,7 +231,9 @@ export const ReadingView: React.FC<ReadingViewProps> = ({
             return (
               <span
                 key={wIdx}
-                className={`inline-block mr-1.5 transition-all rounded-md px-1 ${
+                onClick={() => handleStartReadingFromWord(wordStart)}
+                title="Klik om vanaf hier te laten voorlezen"
+                className={`inline-block mr-1.5 transition-all rounded-md px-1 cursor-pointer hover:bg-amber-100/70 ${
                   isSpoken
                     ? 'bg-amber-300 text-stone-950 font-bold scale-105 shadow-xs ring-2 ring-amber-400'
                     : ''
@@ -308,7 +333,7 @@ export const ReadingView: React.FC<ReadingViewProps> = ({
             <div className="flex items-center gap-2">
               <span className="text-lg">💡</span>
               <span>
-                Tik op de <strong className="text-amber-950 font-bold bg-amber-200/80 px-1.5 py-0.5 rounded-md">geel gemarkeerde woorden</strong> voor een eenvoudige uitleg en betekenis!
+                Tik op de <strong className="text-amber-950 font-bold bg-amber-200/80 px-1.5 py-0.5 rounded-md">geel gemarkeerde woorden</strong> voor een eenvoudige uitleg en betekenis! Tik op een ander woord om het voorlezen precies daar te laten starten.
               </span>
             </div>
             <span className="hidden sm:inline text-stone-500 font-mono">
@@ -359,6 +384,53 @@ export const ReadingView: React.FC<ReadingViewProps> = ({
         onClose={() => setSelectedWord(null)}
         voiceURI={settings.selectedVoiceURI}
       />
+
+      {/* Floating playback controls - always visible, even far down a long text */}
+      <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 bg-white/95 backdrop-blur-md border border-amber-200 shadow-lg rounded-full px-3 py-2">
+        {!isPlayingAudio && !isPausedAudio ? (
+          <button
+            onClick={handlePlayAudio}
+            className="flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-full shadow-xs transition-all active:scale-95 text-xs sm:text-sm font-lexend cursor-pointer"
+          >
+            <Volume2 className="w-4 h-4" />
+            <span>Lees voor</span>
+          </button>
+        ) : isPausedAudio ? (
+          <>
+            <button
+              onClick={handlePlayAudio}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-full shadow-xs text-xs font-lexend cursor-pointer"
+            >
+              <Play className="w-3.5 h-3.5 fill-current" />
+              <span>Verder</span>
+            </button>
+            <button
+              onClick={handleStopAudio}
+              className="p-2 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-full cursor-pointer"
+              title="Stop"
+            >
+              <Square className="w-3.5 h-3.5 fill-current" />
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              onClick={handlePauseAudio}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-full shadow-xs text-xs font-lexend cursor-pointer animate-pulse"
+            >
+              <Pause className="w-3.5 h-3.5" />
+              <span>Pauze</span>
+            </button>
+            <button
+              onClick={handleStopAudio}
+              className="p-2 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-full cursor-pointer"
+              title="Stop"
+            >
+              <Square className="w-3.5 h-3.5 fill-current" />
+            </button>
+          </>
+        )}
+      </div>
 
       {/* Image Lightbox */}
       {lightboxImage && (
