@@ -93,6 +93,15 @@ export const TeacherStudio: React.FC<TeacherStudioProps> = ({
   const [isRestoringBackup, setIsRestoringBackup] = useState(false);
   const [backupError, setBackupError] = useState<string | null>(null);
 
+  const handleClearAllStories = () => {
+    const confirmed = window.confirm(
+      `Dit verwijdert al je ${stories.length} teksten in één keer. Er wordt automatisch nog een back-up van de huidige staat bewaard, maar doe dit alleen als je zeker bent. Doorgaan?`
+    );
+    if (!confirmed) return;
+    onImportLibrary([]);
+    setImportSuccess('Bibliotheek geleegd. Je kan nu opnieuw importeren.');
+  };
+
   const handleLoadBackups = async () => {
     setIsLoadingBackups(true);
     setBackupError(null);
@@ -1579,6 +1588,14 @@ export const TeacherStudio: React.FC<TeacherStudioProps> = ({
                       className="hidden"
                     />
                   </label>
+
+                  <button
+                    onClick={handleClearAllStories}
+                    className="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer ml-auto"
+                  >
+                    <X className="w-4 h-4" />
+                    Verwijder alle teksten
+                  </button>
                 </div>
               </div>
 
