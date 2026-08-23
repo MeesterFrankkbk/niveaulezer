@@ -1505,12 +1505,12 @@ export const TeacherStudio: React.FC<TeacherStudioProps> = ({
               </div>
 
               {/* Library Backup & JSON Export */}
-              <div className="bg-white p-6 rounded-3xl border border-stone-200">
-                <h4 className="text-sm font-bold text-stone-900 font-lexend mb-2">
-                  Bibliotheek Backup & Delen (JSON)
+              <div className="bg-white p-6 rounded-3xl border-2 border-amber-200">
+                <h4 className="text-sm font-bold text-stone-900 font-lexend mb-2 flex items-center gap-1.5">
+                  💾 Bibliotheek Backup & Delen (JSON)
                 </h4>
                 <p className="text-xs text-stone-600 mb-4">
-                  Exporteer alle {stories.length} verhalen naar een JSON-bestand om te delen met collega-leerkrachten of bewaar een backup.
+                  Je bibliotheek wordt automatisch bewaard op de server, maar een eigen back-up blijft de veiligste gewoonte. Download regelmatig - zeker na een grote import - een kopie van alle {stories.length} teksten. Handig ook om te delen met collega-leerkrachten.
                 </p>
 
                 <div className="flex flex-wrap items-center gap-3">
