@@ -637,6 +637,53 @@ export const TeacherStudio: React.FC<TeacherStudioProps> = ({
     setNewWord({ word: '', definition: '', example: '', emoji: '📖' });
   };
 
+  // Bulk-add difficult words: one per line, format "woord: uitleg" with
+  // optional " | voorbeeldzin | emoji" extras.
+  const [bulkWordsText, setBulkWordsText] = useState('');
+  const [bulkWordsMessage, setBulkWordsMessage] = useState<string | null>(null);
+
+  const handleBulkAddWords = () => {
+    const lines = bulkWordsText.split('\n').map(l => l.trim()).filter(Boolean);
+    const parsed: DifficultWord[] = [];
+    let skipped = 0;
+
+    lines.forEach(line => {
+      const parts = line.split('|').map(p => p.trim());
+      const first = parts[0];
+      const colonIdx = first.indexOf(':');
+      if (colonIdx === -1) { skipped++; return; }
+
+      const word = first.slice(0, colonIdx).trim();
+      const definition = first.slice(colonIdx + 1).trim();
+      if (!word || !definition) { skipped++; return; }
+
+      parsed.push({
+        word,
+        definition,
+        example: parts[1] || undefined,
+        emoji: parts[2] || '📖',
+        syllableSplit: parts[3] || undefined
+      });
+    });
+
+    if (parsed.length === 0) {
+      setBulkWordsMessage('Geen geldige regels herkend. Gebruik het formaat "woord: uitleg" per regel.');
+      return;
+    }
+
+    setEditorDiffWords(prev => {
+      const existingLower = new Set(prev.map(w => w.word.toLowerCase()));
+      const filtered = parsed.filter(w => !existingLower.has(w.word.toLowerCase()));
+      return [...prev, ...filtered];
+    });
+
+    const addedCount = parsed.length;
+    setBulkWordsMessage(
+      `${addedCount} woord(en) toegevoegd.${skipped > 0 ? ` ${skipped} regel(s) overgeslagen (verkeerd formaat).` : ''}`
+    );
+    setBulkWordsText('');
+  };
+
   const handleRemoveDifficultWord = (index: number) => {
     setEditorDiffWords(prev => prev.filter((_, i) => i !== index));
   };
@@ -1265,6 +1312,37 @@ export const TeacherStudio: React.FC<TeacherStudioProps> = ({
                       + Woord toevoegen
                     </button>
                   </div>
+
+                  {/* Bulk add difficult words */}
+                  <details className="mt-4 group">
+                    <summary className="text-xs font-bold text-amber-800 cursor-pointer select-none">
+                      📋 Meerdere woorden tegelijk plakken
+                    </summary>
+                    <div className="mt-3 bg-white p-3 rounded-xl border border-dashed border-stone-300">
+                      <p className="text-[11px] text-stone-500 mb-2">
+                        Eén woord per regel, in dit formaat: <code className="bg-stone-100 px-1 py-0.5 rounded">woord: uitleg</code>.
+                        Optioneel extra: <code className="bg-stone-100 px-1 py-0.5 rounded">woord: uitleg | voorbeeldzin | emoji</code>
+                      </p>
+                      <textarea
+                        rows={5}
+                        value={bulkWordsText}
+                        onChange={(e) => setBulkWordsText(e.target.value)}
+                        placeholder={'tuinhuis: een klein gebouwtje in de tuin\nverdwaasd: erg in de war, alsof je niet meer weet wat er gebeurt | Hij keek verdwaasd om zich heen. | 😵'}
+                        className="w-full p-2.5 bg-stone-50 border border-stone-200 rounded-xl text-xs font-mono"
+                      />
+                      <div className="flex items-center gap-2 mt-2">
+                        <button
+                          onClick={handleBulkAddWords}
+                          className="px-3 py-2 bg-stone-900 hover:bg-stone-800 text-white rounded-xl text-xs font-bold cursor-pointer"
+                        >
+                          Alles toevoegen
+                        </button>
+                        {bulkWordsMessage && (
+                          <span className="text-[11px] text-stone-500">{bulkWordsMessage}</span>
+                        )}
+                      </div>
+                    </div>
+                  </details>
                 </div>
 
                 {/* Questions manager */}
