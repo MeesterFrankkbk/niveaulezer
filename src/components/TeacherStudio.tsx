@@ -237,6 +237,8 @@ export const TeacherStudio: React.FC<TeacherStudioProps> = ({
   };
 
   // Ask AI to suggest comprehension questions + difficult words for the current text
+  const [aiQuestionCount, setAiQuestionCount] = useState(5);
+
   const handleGenerateQuestionsForText = async () => {
     if (!editorContent.trim()) {
       setGenQuestionsError('Voeg eerst een leestekst toe voor je vragen laat genereren.');
@@ -253,7 +255,8 @@ export const TeacherStudio: React.FC<TeacherStudioProps> = ({
         body: JSON.stringify({
           content: stripInlineImages(editorContent),
           level: editorLevel,
-          existingQuestionCount: editorQuestions.length
+          existingQuestionCount: editorQuestions.length,
+          questionCount: aiQuestionCount
         })
       });
 
@@ -711,6 +714,70 @@ export const TeacherStudio: React.FC<TeacherStudioProps> = ({
 
   const handleRemoveQuestion = (id: string) => {
     setEditorQuestions(prev => prev.filter(q => q.id !== id));
+  };
+
+  // Bulk-add manual questions, pasted as text blocks separated by a blank line:
+  //   Vraag: <question text>
+  //   A) optie
+  //   *B) juiste optie (marker "*" voor het juiste antwoord)
+  //   C) optie
+  //   D) optie
+  //   Uitleg: <optional explanation>
+  const [bulkQuestionsText, setBulkQuestionsText] = useState('');
+  const [bulkQuestionsMessage, setBulkQuestionsMessage] = useState<string | null>(null);
+
+  const handleBulkAddQuestions = () => {
+    const blocks = bulkQuestionsText.split(/\n\s*\n/).map(b => b.trim()).filter(Boolean);
+    const parsed: Question[] = [];
+    let skipped = 0;
+
+    blocks.forEach(block => {
+      const lines = block.split('\n').map(l => l.trim()).filter(Boolean);
+      let questionText = '';
+      const options: string[] = [];
+      let correctIndex = -1;
+      let explanation = '';
+
+      lines.forEach(line => {
+        const optionMatch = line.match(/^\*?\s*[A-Da-d][\).]\s*(.+)$/);
+        if (/^vraag\s*:/i.test(line)) {
+          questionText = line.slice(line.indexOf(':') + 1).trim();
+        } else if (/^uitleg\s*:/i.test(line)) {
+          explanation = line.slice(line.indexOf(':') + 1).trim();
+        } else if (optionMatch) {
+          const isCorrect = line.trim().startsWith('*');
+          options.push(optionMatch[1].trim());
+          if (isCorrect) correctIndex = options.length - 1;
+        } else if (!questionText) {
+          questionText = line;
+        }
+      });
+
+      if (!questionText || options.length < 2 || correctIndex === -1) {
+        skipped++;
+        return;
+      }
+
+      parsed.push({
+        id: `q-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        question: questionText,
+        options,
+        correctIndex,
+        explanation: explanation || 'Controleer het antwoord in de tekst.',
+        type: 'comprehension'
+      });
+    });
+
+    if (parsed.length === 0) {
+      setBulkQuestionsMessage('Geen geldige vragen herkend. Controleer het formaat hieronder.');
+      return;
+    }
+
+    setEditorQuestions(prev => [...prev, ...parsed]);
+    setBulkQuestionsMessage(
+      `${parsed.length} vra(a)g(en) toegevoegd.${skipped > 0 ? ` ${skipped} blok(ken) overgeslagen (verkeerd formaat of geen * bij het juiste antwoord).` : ''}`
+    );
+    setBulkQuestionsText('');
   };
 
   const handleSaveSettings = () => {
@@ -1351,24 +1418,37 @@ export const TeacherStudio: React.FC<TeacherStudioProps> = ({
                     <h4 className="text-xs font-bold uppercase tracking-wider text-stone-800 flex items-center gap-1.5">
                       <span>Begripsvragen ({editorQuestions.length})</span>
                     </h4>
-                    <button
-                      type="button"
-                      onClick={handleGenerateQuestionsForText}
-                      disabled={isGeneratingQuestions}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-60 text-white text-xs font-bold rounded-xl cursor-pointer transition-colors"
-                    >
-                      {isGeneratingQuestions ? (
-                        <>
-                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                          Bezig met genereren...
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles className="w-3.5 h-3.5" />
-                          Genereer vragen met AI
-                        </>
-                      )}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <label className="flex items-center gap-1.5 text-[11px] text-stone-500 font-bold">
+                        Aantal:
+                        <input
+                          type="number"
+                          min={1}
+                          max={15}
+                          value={aiQuestionCount}
+                          onChange={(e) => setAiQuestionCount(Math.max(1, Math.min(15, Number(e.target.value) || 1)))}
+                          className="w-14 p-1.5 bg-white border border-stone-200 rounded-lg text-xs text-center"
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={handleGenerateQuestionsForText}
+                        disabled={isGeneratingQuestions}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-60 text-white text-xs font-bold rounded-xl cursor-pointer transition-colors"
+                      >
+                        {isGeneratingQuestions ? (
+                          <>
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            Bezig met genereren...
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="w-3.5 h-3.5" />
+                            Genereer vragen met AI
+                          </>
+                        )}
+                      </button>
+                    </div>
                   </div>
 
                   {genQuestionsError && (
@@ -1464,6 +1544,36 @@ export const TeacherStudio: React.FC<TeacherStudioProps> = ({
                       + Vraag toevoegen
                     </button>
                   </div>
+
+                  {/* Bulk add questions */}
+                  <details className="mt-4 group">
+                    <summary className="text-xs font-bold text-amber-800 cursor-pointer select-none">
+                      📋 Meerdere eigen vragen tegelijk plakken
+                    </summary>
+                    <div className="mt-3 bg-white p-3 rounded-xl border border-dashed border-stone-300">
+                      <p className="text-[11px] text-stone-500 mb-2 leading-relaxed">
+                        Eén vraag per blok, gescheiden door een lege regel. Zet een <code className="bg-stone-100 px-1 py-0.5 rounded">*</code> vóór het juiste antwoord. "Uitleg:" is optioneel.
+                      </p>
+                      <textarea
+                        rows={8}
+                        value={bulkQuestionsText}
+                        onChange={(e) => setBulkQuestionsText(e.target.value)}
+                        placeholder={'Vraag: Waar verstopte de knuffelbeer zich?\nA) Onder het bed\n*B) In de kast\nC) In de tuin\nD) Op zolder\nUitleg: In de tekst staat dat hij in de kast lag.\n\nVraag: Hoe voelde het meisje zich toen ze de beer vond?\nA) Boos\n*B) Blij\nC) Bang\nD) Verdrietig'}
+                        className="w-full p-2.5 bg-stone-50 border border-stone-200 rounded-xl text-xs font-mono"
+                      />
+                      <div className="flex items-center gap-2 mt-2">
+                        <button
+                          onClick={handleBulkAddQuestions}
+                          className="px-3 py-2 bg-stone-900 hover:bg-stone-800 text-white rounded-xl text-xs font-bold cursor-pointer"
+                        >
+                          Alles toevoegen
+                        </button>
+                        {bulkQuestionsMessage && (
+                          <span className="text-[11px] text-stone-500">{bulkQuestionsMessage}</span>
+                        )}
+                      </div>
+                    </div>
+                  </details>
                 </div>
 
                 {/* Save button */}
