@@ -15,10 +15,12 @@ export const handler: Handler = async (event) => {
   }
 
   try {
-    const { content, level, existingQuestionCount } = JSON.parse(event.body || '{}');
+    const { content, level, existingQuestionCount, questionCount } = JSON.parse(event.body || '{}');
     if (!content || !String(content).trim()) {
       return { statusCode: 400, body: JSON.stringify({ error: 'Geen leestekst opgegeven.' }) };
     }
+
+    const numQuestions = Math.max(1, Math.min(15, Number(questionCount) || 3));
 
     const ai = new GoogleGenAI({ apiKey });
 
@@ -31,10 +33,10 @@ ${String(content).slice(0, 8000)}
 """
 
 Maak hier zinvolle begripsvragen bij die echt over de inhoud van DEZE tekst gaan (geen algemene vragen):
-1. 3 meerkeuzevragen (Hot Potatoes stijl): elk met 4 antwoordopties, het juiste antwoord (index 0-3) en een korte, vriendelijke uitleg/feedback waarom dat antwoord juist is.
+1. Precies ${numQuestions} meerkeuzevragen (Hot Potatoes stijl): elk met 4 antwoordopties, het juiste antwoord (index 0-3) en een korte, vriendelijke uitleg/feedback waarom dat antwoord juist is. Zorg voor variatie tussen de vragen (niet allemaal over hetzelfde detail) zodat een leerkracht er gemakkelijk een paar kan verwijderen zonder aan kwaliteit in te boeten.
 2. 3-4 moeilijke of minder frequente woorden UIT DEZE TEKST, met een kindvriendelijke definitie, een voorbeeldzin, een passende emoji, en de opdeling in lettergrepen (met punt ertussen, bv. "won·der·baar·lijk").
 
-Zorg dat de vragen een mix zijn van: 1 letterlijke vraag (staat letterlijk in de tekst), 1 begripsvraag (vraagt om iets te begrijpen/verbinden), en 1 vraag over woordbetekenis of gevoel/mening in de tekst.`;
+Zorg dat de vragen een goede mix zijn van: letterlijke vragen (staat letterlijk in de tekst), begripsvragen (vraagt om iets te begrijpen/verbinden), en vragen over woordbetekenis of gevoel/mening in de tekst.`;
 
     const response = await ai.models.generateContent({
       model: 'gemini-3.6-flash',
