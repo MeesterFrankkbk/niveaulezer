@@ -87,6 +87,53 @@ export const TeacherStudio: React.FC<TeacherStudioProps> = ({
   const [editorDiffWords, setEditorDiffWords] = useState<DifficultWord[]>([]);
   const [editorQuestions, setEditorQuestions] = useState<Question[]>([]);
   const [newWord, setNewWord] = useState({ word: '', definition: '', example: '', emoji: '📖' });
+  interface BackupSummary { index: number; timestamp: string; count: number; }
+  const [backups, setBackups] = useState<BackupSummary[]>([]);
+  const [isLoadingBackups, setIsLoadingBackups] = useState(false);
+  const [isRestoringBackup, setIsRestoringBackup] = useState(false);
+  const [backupError, setBackupError] = useState<string | null>(null);
+
+  const handleLoadBackups = async () => {
+    setIsLoadingBackups(true);
+    setBackupError(null);
+    try {
+      const response = await fetch('/api/list-backups');
+      if (!response.ok) throw new Error('Kon de back-ups niet ophalen.');
+      const data = await response.json();
+      setBackups(data.backups || []);
+    } catch (err: any) {
+      setBackupError(err.message || 'Kon de back-ups niet ophalen.');
+    } finally {
+      setIsLoadingBackups(false);
+    }
+  };
+
+  const handleRestoreBackup = async (index: number) => {
+    const confirmed = window.confirm(
+      'Dit vervangt je huidige volledige bibliotheek door deze oudere versie. Weet je het zeker?'
+    );
+    if (!confirmed) return;
+
+    setIsRestoringBackup(true);
+    setBackupError(null);
+    try {
+      const response = await fetch('/api/restore-backup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ index })
+      });
+      if (!response.ok) throw new Error('Herstellen is mislukt.');
+      const data = await response.json();
+      if (Array.isArray(data.stories)) {
+        onImportLibrary(data.stories);
+        setImportSuccess(`Bibliotheek hersteld naar de versie van ${new Date(backups[index]?.timestamp).toLocaleString('nl-BE')}.`);
+      }
+    } catch (err: any) {
+      setBackupError(err.message || 'Herstellen is mislukt.');
+    } finally {
+      setIsRestoringBackup(false);
+    }
+  };
   const [isGeneratingQuestions, setIsGeneratingQuestions] = useState(false);
   const [genQuestionsError, setGenQuestionsError] = useState<string | null>(null);
   const contentTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -1533,6 +1580,51 @@ export const TeacherStudio: React.FC<TeacherStudioProps> = ({
                     />
                   </label>
                 </div>
+              </div>
+
+              {/* Automatic server-side backups */}
+              <div className="bg-white p-6 rounded-3xl border border-stone-200 mt-6">
+                <h4 className="text-sm font-bold text-stone-900 font-lexend mb-2 flex items-center gap-1.5">
+                  🕒 Automatische back-ups
+                </h4>
+                <p className="text-xs text-stone-600 mb-4">
+                  Bij elke opslag bewaart de server automatisch een tijdgestempelde momentopname (tot de laatste 15). Mocht er ooit iets misgaan, kan je hier terug naar een vorige versie.
+                </p>
+
+                <button
+                  onClick={handleLoadBackups}
+                  disabled={isLoadingBackups}
+                  className="px-4 py-2 bg-stone-100 hover:bg-stone-200 disabled:opacity-60 text-stone-800 rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer"
+                >
+                  <RefreshCw className={`w-4 h-4 ${isLoadingBackups ? 'animate-spin' : ''}`} />
+                  {isLoadingBackups ? 'Laden...' : 'Toon beschikbare back-ups'}
+                </button>
+
+                {backupError && (
+                  <p className="text-xs font-bold text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2 mt-3">
+                    {backupError}
+                  </p>
+                )}
+
+                {backups.length > 0 && (
+                  <div className="mt-4 space-y-2">
+                    {backups.map(b => (
+                      <div key={b.index} className="flex items-center justify-between gap-3 bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5">
+                        <div className="text-xs text-stone-700">
+                          <span className="font-bold">{new Date(b.timestamp).toLocaleString('nl-BE')}</span>
+                          <span className="text-stone-400"> — {b.count} teksten</span>
+                        </div>
+                        <button
+                          onClick={() => handleRestoreBackup(b.index)}
+                          disabled={isRestoringBackup}
+                          className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-60 text-white text-[11px] font-bold rounded-lg cursor-pointer whitespace-nowrap"
+                        >
+                          Herstel deze versie
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           )}
