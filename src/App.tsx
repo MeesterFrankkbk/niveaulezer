@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Story, 
   AviLevel, 
@@ -158,14 +158,64 @@ export default function App() {
     }
   }, []);
 
-  // Save stories to localStorage
+  // Load the library from the server on startup - this is now the source of
+  // truth. localStorage is kept only as an instant-loading placeholder and an
+  // offline fallback; we never let it silently overwrite server data.
+  const hasLoadedFromServerRef = useRef(false);
+  const [isSyncingLibrary, setIsSyncingLibrary] = useState(true);
+  const [librarySyncError, setLibrarySyncError] = useState<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const response = await fetch('/api/load-library');
+        if (response.ok) {
+          const data = await response.json();
+          if (Array.isArray(data.stories) && data.stories.length > 0) {
+            setStories(data.stories);
+            localStorage.setItem('niveaulezer_stories', JSON.stringify(data.stories));
+          }
+          if (Array.isArray(data.results)) {
+            setResults(data.results);
+            localStorage.setItem('niveaulezer_results', JSON.stringify(data.results));
+          }
+        } else {
+          setLibrarySyncError('Kon de bibliotheek niet laden van de server - je ziet momenteel enkel de lokale versie op dit toestel.');
+        }
+      } catch (e) {
+        setLibrarySyncError('Geen verbinding met de server - je ziet momenteel enkel de lokale versie op dit toestel.');
+      } finally {
+        hasLoadedFromServerRef.current = true;
+        setIsSyncingLibrary(false);
+      }
+    })();
+  }, []);
+
+  // Save stories to localStorage (fast local cache) and to the server
+  // (source of truth, shared across devices/browsers) - server sync is only
+  // enabled after the initial server load above has completed, so a stale
+  // local snapshot can never overwrite good server data on startup.
   useEffect(() => {
     localStorage.setItem('niveaulezer_stories', JSON.stringify(stories));
+    if (hasLoadedFromServerRef.current) {
+      fetch('/api/save-library', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stories })
+      }).catch(() => setLibrarySyncError('Kon de bibliotheek niet naar de server opslaan - probeer het later opnieuw of maak een JSON-back-up.'));
+    }
   }, [stories]);
 
-  // Save results to localStorage
+  // Save results to localStorage and the server (same safeguard as above)
   useEffect(() => {
     localStorage.setItem('niveaulezer_results', JSON.stringify(results));
+    if (hasLoadedFromServerRef.current) {
+      fetch('/api/save-library', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ results })
+      }).catch(() => setLibrarySyncError('Kon de resultaten niet naar de server opslaan - probeer het later opnieuw.'));
+    }
   }, [results]);
 
   // Save teacher settings to localStorage
@@ -304,6 +354,22 @@ export default function App() {
         onSwitchStudent={() => setStudentProfile(null)}
         totalStoriesCount={stories.length}
       />
+
+      {/* Library sync warning - only shown if server sync actually fails */}
+      {librarySyncError && (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 w-full mt-3">
+          <div className="bg-red-50 border border-red-200 text-red-800 text-xs font-bold px-4 py-2.5 rounded-2xl flex items-center justify-between gap-3">
+            <span>⚠️ {librarySyncError}</span>
+            <button
+              onClick={() => setLibrarySyncError(null)}
+              className="shrink-0 text-red-400 hover:text-red-700 cursor-pointer"
+              aria-label="Sluiten"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Main View Router */}
       {currentView === 'overview' && (
