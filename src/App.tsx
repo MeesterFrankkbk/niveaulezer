@@ -159,11 +159,15 @@ export default function App() {
   }, []);
 
   // Load the library from the server on startup - this is now the source of
-  // truth. localStorage is kept only as an instant-loading placeholder and an
-  // offline fallback; we never let it silently overwrite server data.
+  // truth EXCEPT when it would mean losing data: if the server has FEWER
+  // stories than this device's local copy, that's a sign the server is
+  // behind (a failed sync, an expired token, etc.) - we never silently
+  // downgrade in that case. We keep the fuller local copy and surface a
+  // warning with a manual "sync now" option instead.
   const hasLoadedFromServerRef = useRef(false);
   const [isSyncingLibrary, setIsSyncingLibrary] = useState(true);
   const [librarySyncError, setLibrarySyncError] = useState<string | null>(null);
+  const [canForceSyncToServer, setCanForceSyncToServer] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -171,9 +175,18 @@ export default function App() {
         const response = await fetch('/api/load-library');
         if (response.ok) {
           const data = await response.json();
-          if (Array.isArray(data.stories) && data.stories.length > 0) {
-            setStories(data.stories);
-            localStorage.setItem('niveaulezer_stories', JSON.stringify(data.stories));
+          if (Array.isArray(data.stories)) {
+            setStories(prevStories => {
+              if (data.stories.length < prevStories.length) {
+                setLibrarySyncError(
+                  `Let op: de server heeft maar ${data.stories.length} teksten, terwijl dit toestel er ${prevStories.length} heeft. Om veiligheidsredenen is je lokale versie NIET overschreven. Klik op "Synchroniseer nu" om je volledige lokale versie naar de server te sturen.`
+                );
+                setCanForceSyncToServer(true);
+                return prevStories;
+              }
+              localStorage.setItem('niveaulezer_stories', JSON.stringify(data.stories));
+              return data.stories;
+            });
           }
           if (Array.isArray(data.results)) {
             setResults(data.results);
@@ -190,6 +203,25 @@ export default function App() {
       }
     })();
   }, []);
+
+  // Manually push this device's current local library to the server,
+  // overwriting whatever is there - used after the safety warning above,
+  // once the person has confirmed the local copy is the one to keep.
+  const handleForceSyncToServer = async () => {
+    try {
+      const response = await fetch('/api/save-library', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stories, results })
+      });
+      if (!response.ok) throw new Error('Synchroniseren is mislukt.');
+      localStorage.setItem('niveaulezer_stories', JSON.stringify(stories));
+      setLibrarySyncError(null);
+      setCanForceSyncToServer(false);
+    } catch (e) {
+      setLibrarySyncError('Synchroniseren is mislukt. Probeer het opnieuw of maak een JSON-back-up.');
+    }
+  };
 
   // Save stories to localStorage (fast local cache) and to the server
   // (source of truth, shared across devices/browsers) - server sync is only
@@ -358,15 +390,25 @@ export default function App() {
       {/* Library sync warning - only shown if server sync actually fails */}
       {librarySyncError && (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 w-full mt-3">
-          <div className="bg-red-50 border border-red-200 text-red-800 text-xs font-bold px-4 py-2.5 rounded-2xl flex items-center justify-between gap-3">
+          <div className="bg-red-50 border border-red-200 text-red-800 text-xs font-bold px-4 py-2.5 rounded-2xl flex items-center justify-between gap-3 flex-wrap">
             <span>⚠️ {librarySyncError}</span>
-            <button
-              onClick={() => setLibrarySyncError(null)}
-              className="shrink-0 text-red-400 hover:text-red-700 cursor-pointer"
-              aria-label="Sluiten"
-            >
-              ✕
-            </button>
+            <div className="flex items-center gap-2 shrink-0">
+              {canForceSyncToServer && (
+                <button
+                  onClick={handleForceSyncToServer}
+                  className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold cursor-pointer whitespace-nowrap"
+                >
+                  Synchroniseer nu
+                </button>
+              )}
+              <button
+                onClick={() => setLibrarySyncError(null)}
+                className="text-red-400 hover:text-red-700 cursor-pointer"
+                aria-label="Sluiten"
+              >
+                ✕
+              </button>
+            </div>
           </div>
         </div>
       )}
