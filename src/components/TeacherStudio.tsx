@@ -817,6 +817,31 @@ export const TeacherStudio: React.FC<TeacherStudioProps> = ({
         }
       };
     }
+    e.target.value = '';
+  };
+
+  // Merge-import: adds only stories from the JSON file that aren't already
+  // present (matched by id), instead of replacing the whole library. Used to
+  // combine libraries from two devices that both gained unique content.
+  const handleMergeImportJSONFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const fileReader = new FileReader();
+    if (e.target.files && e.target.files[0]) {
+      fileReader.readAsText(e.target.files[0], "UTF-8");
+      fileReader.onload = (event) => {
+        try {
+          const parsed = JSON.parse(event.target?.result as string);
+          if (Array.isArray(parsed)) {
+            const existingIds = new Set(stories.map(s => s.id));
+            const newOnes: Story[] = parsed.filter((s: Story) => s && s.id && !existingIds.has(s.id));
+            newOnes.forEach(s => onSaveStory(s));
+            alert(`${newOnes.length} nieuwe tekst(en) toegevoegd (${parsed.length - newOnes.length} bestonden al en zijn overgeslagen). Je huidige teksten zijn niet aangeraakt.`);
+          }
+        } catch (err) {
+          alert('Ongeldig JSON bestand.');
+        }
+      };
+    }
+    e.target.value = '';
   };
 
   return (
@@ -1768,11 +1793,22 @@ export const TeacherStudio: React.FC<TeacherStudioProps> = ({
 
                   <label className="px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-800 rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer">
                     <Upload className="w-4 h-4" />
-                    <span>Importeer JSON bestand</span>
+                    <span>Importeer JSON bestand (vervangt alles)</span>
                     <input
                       type="file"
                       accept=".json"
                       onChange={handleImportJSONFile}
+                      className="hidden"
+                    />
+                  </label>
+
+                  <label className="px-4 py-2 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-800 rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer">
+                    <Upload className="w-4 h-4" />
+                    <span>Voeg toe uit JSON (samenvoegen)</span>
+                    <input
+                      type="file"
+                      accept=".json"
+                      onChange={handleMergeImportJSONFile}
                       className="hidden"
                     />
                   </label>
