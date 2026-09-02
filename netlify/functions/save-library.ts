@@ -42,6 +42,24 @@ export const handler: Handler = async (event) => {
     }
     if (Array.isArray(results)) {
       await store.setJSON('results', results);
+
+      // Same rolling backup safeguard for reading results.
+      try {
+        const existingResultBackups = (await store.get('resultsBackups', { type: 'json' })) as
+          { timestamp: string; count: number; results: any[] }[] | null;
+        const resultBackups = Array.isArray(existingResultBackups) ? existingResultBackups : [];
+
+        resultBackups.unshift({
+          timestamp: new Date().toISOString(),
+          count: results.length,
+          results
+        });
+
+        const trimmedResults = resultBackups.slice(0, MAX_BACKUPS);
+        await store.setJSON('resultsBackups', trimmedResults);
+      } catch (backupError) {
+        console.error('Error writing automatic results backup:', backupError);
+      }
     }
 
     return {
