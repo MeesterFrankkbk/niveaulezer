@@ -63,7 +63,9 @@ export const Navbar: React.FC<NavbarProps> = ({
               className="flex items-center gap-2 px-3.5 py-1.5 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-2xl text-xs font-bold text-amber-950 transition-colors cursor-pointer"
               title="Klik om je naam aan te passen"
             >
-              <span className="text-base">{studentAvatar || '👦'}</span>
+              <span className="text-base">
+                {studentAvatar ? studentAvatar : (studentName[0] || '👦').toUpperCase()}
+              </span>
               <span className="font-lexend font-extrabold">{studentName}</span>
             </button>
           ) : (
