@@ -17,7 +17,10 @@ const AVATARS: string[] = [
   '🦁', '🐼', '🦊', '🐶', '🐱', '🐨',
   '🐸', '🦄', '🐵', '🐰', '🦉', '🐯',
   '🐳', '🦋', '🐢', '🐧', '🦖', '🐙',
+  '⚡', '🔥', '🌟', '🎧', '🎮', '⚽',
 ];
+
+const NO_AVATAR = '';
 
 export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ initialProfile, onComplete }) => {
   const [voornaam, setVoornaam] = useState(initialProfile?.voornaam ?? '');
@@ -62,7 +65,13 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ initialProfile, on
 
       <div className="w-full max-w-lg bg-white rounded-3xl shadow-lg border border-amber-200 p-6 sm:p-8">
         <div className="text-center mb-6">
-          <div className="text-5xl mb-2">{avatar}</div>
+          {avatar ? (
+            <div className="text-5xl mb-2">{avatar}</div>
+          ) : (
+            <div className="w-16 h-16 mx-auto mb-2 rounded-full bg-stone-700 text-white flex items-center justify-center text-xl font-black font-lexend">
+              {(voornaam[0] || '?').toUpperCase()}{(naam[0] || '').toUpperCase()}
+            </div>
+          )}
           <h1 className="text-2xl sm:text-3xl font-black font-lexend text-stone-900">Hallo! Wie ben jij?</h1>
           <p className="text-sm text-stone-500 mt-1">Vul je gegevens in om te starten met lezen.</p>
         </div>
@@ -115,7 +124,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ initialProfile, on
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-stone-600 mb-2 font-lexend">Kies jouw avatar</label>
+            <label className="block text-xs font-bold text-stone-600 mb-2 font-lexend">Kies jouw avatar (optioneel)</label>
             <div className="grid grid-cols-6 gap-2">
               {AVATARS.map((a) => (
                 <button
@@ -131,6 +140,18 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ initialProfile, on
                   {a}
                 </button>
               ))}
+              <button
+                type="button"
+                onClick={() => setAvatar(NO_AVATAR)}
+                title="Geen avatar - toon mijn initialen"
+                className={`aspect-square rounded-2xl text-[10px] font-bold flex items-center justify-center border-2 transition-all cursor-pointer leading-tight ${
+                  avatar === NO_AVATAR
+                    ? 'border-amber-500 bg-amber-100 scale-105 shadow-xs text-amber-900'
+                    : 'border-transparent bg-stone-50 hover:bg-amber-50 text-stone-500'
+                }`}
+              >
+                Geen<br />avatar
+              </button>
             </div>
           </div>
 
