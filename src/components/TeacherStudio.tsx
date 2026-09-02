@@ -32,6 +32,8 @@ interface TeacherStudioProps {
   onSaveStory: (story: Story) => void;
   onDeleteStory: (storyId: string) => void;
   onImportLibrary: (stories: Story[]) => void;
+  onArchiveResult: (resultId: string, archived: boolean) => void;
+  onDeleteResult: (resultId: string) => void;
   onClose: () => void;
 }
 
@@ -43,6 +45,8 @@ export const TeacherStudio: React.FC<TeacherStudioProps> = ({
   onSaveStory,
   onDeleteStory,
   onImportLibrary,
+  onArchiveResult,
+  onDeleteResult,
   onClose
 }) => {
   const [activeTab, setActiveTab] = useState<'import' | 'generator' | 'editor' | 'results' | 'settings'>('import');
@@ -724,6 +728,78 @@ export const TeacherStudio: React.FC<TeacherStudioProps> = ({
   //   D) optie
   //   Uitleg: <optional explanation>
   const [bulkQuestionsText, setBulkQuestionsText] = useState('');
+
+  // --- Results tab state & logic ---
+  const [resultsSearch, setResultsSearch] = useState('');
+  const [resultsKlasFilter, setResultsKlasFilter] = useState('');
+  const [resultsLevelFilter, setResultsLevelFilter] = useState('');
+  const [showArchivedResults, setShowArchivedResults] = useState(false);
+  const [expandedStudents, setExpandedStudents] = useState<Set<string>>(new Set());
+  const [confirmDeleteResultId, setConfirmDeleteResultId] = useState<string | null>(null);
+
+  const availableKlasOptions = Array.from(
+    new Set(results.map(r => r.studentKlas).filter(Boolean))
+  ) as string[];
+
+  const filteredResults = results.filter(r => {
+    if (!showArchivedResults && r.archived) return false;
+    if (showArchivedResults && !r.archived) return false;
+    if (resultsKlasFilter && r.studentKlas !== resultsKlasFilter) return false;
+    if (resultsLevelFilter && r.level !== resultsLevelFilter) return false;
+    if (resultsSearch.trim()) {
+      const q = resultsSearch.trim().toLowerCase();
+      if (!r.studentName.toLowerCase().includes(q) && !r.storyTitle.toLowerCase().includes(q)) return false;
+    }
+    return true;
+  });
+
+  // Group by student name
+  const resultsByStudent = filteredResults.reduce((acc, r) => {
+    if (!acc[r.studentName]) acc[r.studentName] = [];
+    acc[r.studentName].push(r);
+    return acc;
+  }, {} as Record<string, StudentResult[]>);
+
+  const studentNames = Object.keys(resultsByStudent).sort((a, b) => a.localeCompare(b));
+
+  const toggleStudentExpanded = (name: string) => {
+    setExpandedStudents(prev => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name); else next.add(name);
+      return next;
+    });
+  };
+
+  const handleExportResultsCSV = () => {
+    const headers = ['Leerling', 'Klas', 'Tekst', 'Niveau', 'Datum', 'Score (%)', 'WPM', 'Juiste antwoorden', 'Totaal vragen'];
+    const rows = filteredResults.map(r => [
+      r.studentName,
+      r.studentKlas || '',
+      r.storyTitle,
+      r.level,
+      r.date,
+      String(r.score),
+      String(r.wpm),
+      String(r.correctAnswersCount),
+      String(r.totalQuestions)
+    ]);
+    const csvContent = [headers, ...rows]
+      .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(';'))
+      .join('\n');
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `niveaulezer-resultaten-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleConfirmDeleteResult = (resultId: string) => {
+    onDeleteResult(resultId);
+    setConfirmDeleteResultId(null);
+  };
+
   const [bulkQuestionsMessage, setBulkQuestionsMessage] = useState<string | null>(null);
 
   const handleBulkAddQuestions = () => {
@@ -1634,57 +1710,179 @@ export const TeacherStudio: React.FC<TeacherStudioProps> = ({
           {/* TAB 4: STUDENT RESULTS LOG */}
           {activeTab === 'results' && (
             <div className="max-w-4xl mx-auto space-y-4">
-              <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
                 <h3 className="text-lg font-bold text-stone-900 font-lexend">
                   Overzicht Leesresultaten van de Klas
                 </h3>
                 <span className="text-xs text-stone-500 font-mono">
-                  {results.length} voltooide leesbeurten
+                  {filteredResults.length} van {results.length} leesbeurten
                 </span>
               </div>
 
-              {results.length === 0 ? (
+              {/* Search & filters */}
+              <div className="bg-white p-4 rounded-2xl border border-stone-200 flex flex-wrap items-center gap-2">
+                <div className="relative flex-1 min-w-[160px]">
+                  <Search className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={resultsSearch}
+                    onChange={(e) => setResultsSearch(e.target.value)}
+                    placeholder="Zoek leerling of tekst..."
+                    className="w-full pl-9 pr-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs"
+                  />
+                </div>
+
+                {availableKlasOptions.length > 0 && (
+                  <select
+                    value={resultsKlasFilter}
+                    onChange={(e) => setResultsKlasFilter(e.target.value)}
+                    className="p-2 bg-stone-50 border border-stone-200 rounded-xl text-xs cursor-pointer"
+                  >
+                    <option value="">Alle klassen</option>
+                    {availableKlasOptions.map(k => <option key={k} value={k}>{k}</option>)}
+                  </select>
+                )}
+
+                <select
+                  value={resultsLevelFilter}
+                  onChange={(e) => setResultsLevelFilter(e.target.value)}
+                  className="p-2 bg-stone-50 border border-stone-200 rounded-xl text-xs cursor-pointer"
+                >
+                  <option value="">Alle niveaus</option>
+                  {Object.keys(AVI_COLORS).map(l => <option key={l} value={l}>{l}</option>)}
+                </select>
+
+                <button
+                  onClick={() => setShowArchivedResults(!showArchivedResults)}
+                  className={`px-3 py-2 rounded-xl text-xs font-bold cursor-pointer whitespace-nowrap ${
+                    showArchivedResults ? 'bg-stone-800 text-white' : 'bg-stone-100 text-stone-700 hover:bg-stone-200'
+                  }`}
+                >
+                  {showArchivedResults ? '📦 Archief' : '📋 Actief'}
+                </button>
+
+                <button
+                  onClick={handleExportResultsCSV}
+                  disabled={filteredResults.length === 0}
+                  className="px-3 py-2 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white rounded-xl text-xs font-bold cursor-pointer flex items-center gap-1.5 whitespace-nowrap"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  Exporteer CSV
+                </button>
+              </div>
+
+              {filteredResults.length === 0 ? (
                 <div className="bg-white p-12 rounded-3xl text-center border border-stone-200">
-                  <div className="text-4xl mb-2">📖</div>
-                  <h4 className="text-base font-bold text-stone-800 font-lexend">Nog geen resultaten geregistreerd</h4>
+                  <div className="text-4xl mb-2">{showArchivedResults ? '📦' : '📖'}</div>
+                  <h4 className="text-base font-bold text-stone-800 font-lexend">
+                    {showArchivedResults ? 'Geen gearchiveerde resultaten' : 'Nog geen resultaten geregistreerd'}
+                  </h4>
                   <p className="text-xs text-stone-500 mt-1">
-                    Zodra leerlingen een tekst lezen en de vragen beantwoorden, verschijnen hun WPM, score en opnames hier.
+                    {showArchivedResults
+                      ? 'Resultaten die je archiveert, verschijnen hier.'
+                      : 'Zodra leerlingen een tekst lezen en de vragen beantwoorden, verschijnen hun WPM, score en opnames hier.'}
                   </p>
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {results.map((res) => (
-                    <div key={res.id} className="bg-white p-4 sm:p-5 rounded-2xl border border-stone-200 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-stone-900 text-sm font-lexend">
-                            {res.studentName}
-                          </span>
-                          <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 text-xs font-bold">
-                            {res.level}
-                          </span>
-                          <span className="text-xs text-stone-400 font-mono">
-                            {res.date}
-                          </span>
-                        </div>
-                        <div className="text-xs text-stone-600 mt-1">
-                          {res.storyTitle} ({res.storyCode})
-                        </div>
-                      </div>
+                  {studentNames.map(name => {
+                    const studentResults = resultsByStudent[name].sort((a, b) => b.date.localeCompare(a.date));
+                    const avgScore = Math.round(studentResults.reduce((s, r) => s + r.score, 0) / studentResults.length);
+                    const isExpanded = expandedStudents.has(name);
+                    const klas = studentResults[0]?.studentKlas;
 
-                      <div className="flex items-center gap-4 text-xs font-mono font-bold">
-                        <div className="text-amber-800 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200">
-                          {res.score}% Begrip
-                        </div>
-                        <div className="text-stone-700 bg-stone-100 px-2.5 py-1 rounded-lg">
-                          {res.wpm} WPM
-                        </div>
-                        {res.audioBlobUrl && (
-                          <audio controls src={res.audioBlobUrl} className="h-8 max-w-[140px]" />
+                    return (
+                      <div key={name} className="bg-white rounded-2xl border border-stone-200 overflow-hidden">
+                        <button
+                          onClick={() => toggleStudentExpanded(name)}
+                          className="w-full flex items-center justify-between gap-3 p-4 hover:bg-stone-50 transition-colors cursor-pointer"
+                        >
+                          <div className="flex items-center gap-3">
+                            <span className={`text-stone-400 transition-transform ${isExpanded ? 'rotate-90' : ''}`}>▶</span>
+                            <div className="text-left">
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-stone-900 text-sm font-lexend">{name}</span>
+                                {klas && (
+                                  <span className="px-2 py-0.5 rounded-md bg-stone-100 text-stone-600 text-[11px] font-bold">{klas}</span>
+                                )}
+                              </div>
+                              <span className="text-[11px] text-stone-500">{studentResults.length} leesbeurt(en)</span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-4 text-xs font-mono font-bold">
+                            <div className="text-amber-800 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200">
+                              Gem. {avgScore}%
+                            </div>
+                          </div>
+                        </button>
+
+                        {isExpanded && (
+                          <div className="border-t border-stone-100 divide-y divide-stone-100">
+                            {studentResults.map(res => (
+                              <div key={res.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                <div>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 text-xs font-bold">
+                                      {res.level}
+                                    </span>
+                                    <span className="text-xs text-stone-400 font-mono">{res.date}</span>
+                                  </div>
+                                  <div className="text-xs text-stone-600 mt-1">
+                                    {res.storyTitle} ({res.storyCode})
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <div className="text-amber-800 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200 text-xs font-mono font-bold">
+                                    {res.score}% Begrip
+                                  </div>
+                                  <div className="text-stone-700 bg-stone-100 px-2.5 py-1 rounded-lg text-xs font-mono font-bold">
+                                    {res.wpm} WPM
+                                  </div>
+                                  {res.audioBlobUrl && (
+                                    <audio controls src={res.audioBlobUrl} className="h-8 max-w-[130px]" />
+                                  )}
+
+                                  <button
+                                    onClick={() => onArchiveResult(res.id, !res.archived)}
+                                    title={res.archived ? 'Terugzetten naar actief overzicht' : 'Archiveren (verbergen, niet verwijderen)'}
+                                    className="p-1.5 bg-stone-100 hover:bg-stone-200 text-stone-600 rounded-lg cursor-pointer"
+                                  >
+                                    {res.archived ? '↩️' : '📦'}
+                                  </button>
+
+                                  {confirmDeleteResultId === res.id ? (
+                                    <div className="flex items-center gap-1">
+                                      <button
+                                        onClick={() => handleConfirmDeleteResult(res.id)}
+                                        className="px-2 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-[11px] font-bold cursor-pointer"
+                                      >
+                                        Bevestig
+                                      </button>
+                                      <button
+                                        onClick={() => setConfirmDeleteResultId(null)}
+                                        className="px-2 py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-600 rounded-lg text-[11px] font-bold cursor-pointer"
+                                      >
+                                        Annuleer
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <button
+                                      onClick={() => setConfirmDeleteResultId(res.id)}
+                                      title="Definitief verwijderen"
+                                      className="p-1.5 bg-red-50 hover:bg-red-100 text-red-500 rounded-lg cursor-pointer"
+                                    >
+                                      <X className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
                         )}
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
