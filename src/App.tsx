@@ -310,6 +310,7 @@ export default function App() {
     const newResult: StudentResult = {
       id: `result-${Date.now()}`,
       studentName,
+      studentKlas: studentProfile?.klas,
       storyId: selectedStory.id,
       storyTitle: selectedStory.title,
       storyCode: selectedStory.code,
@@ -347,6 +348,14 @@ export default function App() {
 
   const handleDeleteStory = (storyId: string) => {
     setStories(prev => prev.filter(s => s.id !== storyId));
+  };
+
+  const handleArchiveResult = (resultId: string, archived: boolean) => {
+    setResults(prev => prev.map(r => r.id === resultId ? { ...r, archived } : r));
+  };
+
+  const handleDeleteResult = (resultId: string) => {
+    setResults(prev => prev.filter(r => r.id !== resultId));
   };
 
   const handleImportLibrary = (importedStories: Story[]) => {
@@ -590,6 +599,8 @@ export default function App() {
           onSaveStory={handleSaveStory}
           onDeleteStory={handleDeleteStory}
           onImportLibrary={handleImportLibrary}
+          onArchiveResult={handleArchiveResult}
+          onDeleteResult={handleDeleteResult}
           onClose={() => setIsTeacherStudioOpen(false)}
         />
       )}
