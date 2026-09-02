@@ -67,6 +67,8 @@ export interface StudentResult {
   growthTips: string[];
   badge: string;
   teacherNotes?: string;
+  studentKlas?: string;
+  archived?: boolean;
 }
 
 export interface AccessibilitySettings {
