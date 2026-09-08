@@ -1,5 +1,6 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { StudentResult, TeacherSettings } from '../types';
+import { TEACHERS_ENDPOINT, TEACHERS_TAB } from './WelcomeScreen';
 import { 
   Award, 
   Sparkles, 
@@ -20,6 +21,7 @@ import { AVI_COLORS } from '../utils/aviCalculator';
 interface ReportModalProps {
   result: StudentResult;
   teacherSettings: TeacherSettings;
+  selectedTeachers: string[];
   onClose: () => void;
   onSelectNewStory: () => void;
   onRetryStory: () => void;
@@ -28,11 +30,14 @@ interface ReportModalProps {
 export const ReportModal: React.FC<ReportModalProps> = ({
   result,
   teacherSettings,
+  selectedTeachers,
   onClose,
   onSelectNewStory,
   onRetryStory
 }) => {
   const [copied, setCopied] = React.useState(false);
+  const [sendState, setSendState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+  const [sendError, setSendError] = useState<string | null>(null);
   const printableRef = useRef<HTMLDivElement>(null);
 
   const levelColor = AVI_COLORS[result.level] || AVI_COLORS['M4'];
@@ -43,14 +48,8 @@ export const ReportModal: React.FC<ReportModalProps> = ({
     return `${m}m ${s}s`;
   };
 
-  // Generate mailto link for sending results directly to teacher
-  const handleEmailTeacher = () => {
-    const subject = encodeURIComponent(`Leesrapport ${result.studentName}: ${result.storyTitle} (${result.level})`);
-    
-    const body = encodeURIComponent(
-`Beste ${teacherSettings.teacherName || 'leerkracht'},
-
-Hier zijn de leesprestaties van ${result.studentName}:
+  const buildReportText = () =>
+`Hier zijn de leesprestaties van ${result.studentName}:
 
 📖 Tekst: ${result.storyTitle} (${result.storyCode})
 🎯 AVI-niveau: ${result.level}
@@ -69,11 +68,45 @@ ${result.growthTips.map(t => `- ${t}`).join('\n')}
 Met vriendelijke groetjes,
 ${result.studentName}
 (Gemaakt via NiveauLezer)
-`
-    );
+`;
 
-    const email = teacherSettings.teacherEmail || 'meesterfrank.kbk@gmail.com';
-    window.open(`mailto:${email}?subject=${subject}&body=${body}`, '_blank');
+  // Verstuurt het rapport naar de leerkracht(en) die de leerling koos op de
+  // startpagina - via dezelfde gedeelde leerkrachten-koppeling als
+  // Tafelbouwer. Het e-mailadres van de leerkracht komt hier nooit aan te
+  // pas; dat wordt veilig opgezocht in het Google Sheet.
+  const handleEmailTeacher = async () => {
+    if (selectedTeachers.length === 0) {
+      setSendState('error');
+      setSendError('Er is geen leerkracht gekoppeld aan dit leesrapport. Kies bij het opnieuw inloggen minstens 1 leerkracht.');
+      return;
+    }
+
+    setSendState('sending');
+    setSendError(null);
+
+    try {
+      const res = await fetch(TEACHERS_ENDPOINT, {
+        method: 'POST',
+        body: JSON.stringify({
+          naam: result.studentName,
+          klas: result.studentKlas || '',
+          leerkrachten: selectedTeachers,
+          appNaam: 'Niveaulezer',
+          tab: TEACHERS_TAB,
+          rapportTekst: buildReportText(),
+        }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setSendState('sent');
+      } else {
+        setSendState('error');
+        setSendError(data.error || 'Er ging iets mis bij het versturen.');
+      }
+    } catch (err) {
+      setSendState('error');
+      setSendError('Er ging iets mis bij het versturen. Probeer het later nog eens.');
+    }
   };
 
   const handleCopyReport = () => {
@@ -195,11 +228,39 @@ ${result.studentName}
             {/* Direct Email to Teacher Button */}
             <button
               onClick={handleEmailTeacher}
-              className="w-full py-4 bg-amber-500 hover:bg-amber-600 text-white font-extrabold rounded-2xl shadow-lg hover:shadow-xl transition-all active:scale-98 flex items-center justify-center gap-2 text-base font-lexend cursor-pointer"
+              disabled={sendState === 'sending' || sendState === 'sent'}
+              className={`w-full py-4 font-extrabold rounded-2xl shadow-lg hover:shadow-xl transition-all active:scale-98 flex items-center justify-center gap-2 text-base font-lexend cursor-pointer disabled:cursor-default ${
+                sendState === 'sent'
+                  ? 'bg-green-500 text-white'
+                  : sendState === 'error'
+                  ? 'bg-red-500 hover:bg-red-600 text-white'
+                  : 'bg-amber-500 hover:bg-amber-600 text-white'
+              }`}
             >
-              <Mail className="w-5 h-5" />
-              <span>Mail resultaten naar {teacherSettings.teacherName || 'meester Frank'}</span>
+              {sendState === 'sending' ? (
+                <>
+                  <Mail className="w-5 h-5 animate-pulse" />
+                  <span>Bezig met versturen...</span>
+                </>
+              ) : sendState === 'sent' ? (
+                <>
+                  <Check className="w-5 h-5" />
+                  <span>Verstuurd naar {selectedTeachers.join(' & ') || 'je leerkracht'}!</span>
+                </>
+              ) : (
+                <>
+                  <Mail className="w-5 h-5" />
+                  <span>
+                    Mail resultaten naar {selectedTeachers.length > 0 ? selectedTeachers.join(' & ') : 'je leerkracht'}
+                  </span>
+                </>
+              )}
             </button>
+            {sendState === 'error' && sendError && (
+              <p className="text-xs font-bold text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2">
+                {sendError}
+              </p>
+            )}
 
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
               
