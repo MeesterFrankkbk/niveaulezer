@@ -566,6 +566,7 @@ export default function App() {
         <ReportModal
           result={activeReportResult}
           teacherSettings={teacherSettings}
+          selectedTeachers={studentProfile.teachers || []}
           onClose={() => setActiveReportResult(null)}
           onSelectNewStory={() => {
             setActiveReportResult(null);
