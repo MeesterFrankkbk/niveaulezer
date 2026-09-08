@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 export interface StudentProfile {
   voornaam: string;
@@ -6,6 +6,7 @@ export interface StudentProfile {
   klas: string;
   klasnummer: string;
   avatar: string;
+  teachers: string[];
 }
 
 interface WelcomeScreenProps {
@@ -22,18 +23,61 @@ const AVATARS: string[] = [
 
 const NO_AVATAR = '';
 
+// Gedeelde leerkrachtenlijst (Google Apps Script, zelfde als Tafelbouwer).
+// Geeft enkel naam + avatarnummer terug - e-mailadressen blijven veilig in
+// het Google Sheet en komen nooit in deze app terecht.
+export const TEACHERS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbw_7-KlG3WL0_GsxOOBva9uBpLLcuHOiTbb5mGDhipemop6ihdADLW7k2YJHmu5ARbI/exec';
+// Eigen tabblad voor deze app in het gedeelde Google Sheet - andere apps
+// (zoals Tafelbouwer) gebruiken hun eigen tabblad en zien deze lijst niet.
+export const TEACHERS_TAB = 'Niveaulezer';
+
+interface TeacherOption { naam: string; avatar: number; }
+
+const TEACHER_AVATARS: Record<number, string> = {
+  1: '🦁', 2: '🐸', 3: '🐼', 4: '🦊', 5: '🐨', 6: '🐰',
+  7: '🐢', 8: '🦉', 9: '🐝', 10: '🐬', 11: '🦄', 12: '🐙',
+};
+
 export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ initialProfile, onComplete }) => {
   const [voornaam, setVoornaam] = useState(initialProfile?.voornaam ?? '');
   const [naam, setNaam] = useState(initialProfile?.naam ?? '');
   const [klas, setKlas] = useState(initialProfile?.klas ?? '');
   const [klasnummer, setKlasnummer] = useState(initialProfile?.klasnummer ?? '');
   const [avatar, setAvatar] = useState(initialProfile?.avatar ?? AVATARS[0]);
+  const [selectedTeachers, setSelectedTeachers] = useState<string[]>(initialProfile?.teachers ?? []);
+  const [teacherOptions, setTeacherOptions] = useState<TeacherOption[]>([]);
+  const [teachersLoading, setTeachersLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(`${TEACHERS_ENDPOINT}?tab=${encodeURIComponent(TEACHERS_TAB)}`);
+        const data = await res.json();
+        if (Array.isArray(data) && data.length) setTeacherOptions(data);
+      } catch (e) {
+        // Geen verbinding of nog niet geconfigureerd: lijst blijft leeg,
+        // de leerling kan wel gewoon starten (zie validatie hieronder).
+      } finally {
+        setTeachersLoading(false);
+      }
+    })();
+  }, []);
+
+  const toggleTeacher = (naamVal: string) => {
+    setSelectedTeachers(prev =>
+      prev.includes(naamVal) ? prev.filter(t => t !== naamVal) : [...prev, naamVal]
+    );
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!voornaam.trim() || !naam.trim() || !klas.trim() || !klasnummer.trim()) {
       setError('Vul alle velden in voor je begint.');
+      return;
+    }
+    if (teacherOptions.length > 0 && selectedTeachers.length === 0) {
+      setError('Kies minstens 1 leerkracht die jouw leesrapporten mag ontvangen.');
       return;
     }
     setError(null);
@@ -43,6 +87,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ initialProfile, on
       klas: klas.trim(),
       klasnummer: klasnummer.trim(),
       avatar,
+      teachers: selectedTeachers,
     });
   };
 
@@ -154,6 +199,32 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ initialProfile, on
               </button>
             </div>
           </div>
+
+          {!teachersLoading && teacherOptions.length > 0 && (
+            <div>
+              <label className="block text-xs font-bold text-stone-600 mb-2 font-lexend">
+                Wie mag jouw leesrapporten ontvangen?
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                {teacherOptions.map((t) => (
+                  <button
+                    type="button"
+                    key={t.naam}
+                    onClick={() => toggleTeacher(t.naam)}
+                    className={`flex items-center gap-2 p-2.5 rounded-xl border-2 transition-all cursor-pointer text-left ${
+                      selectedTeachers.includes(t.naam)
+                        ? 'border-amber-500 bg-amber-100 shadow-xs'
+                        : 'border-transparent bg-stone-50 hover:bg-amber-50'
+                    }`}
+                  >
+                    <span className="text-xl">{TEACHER_AVATARS[t.avatar] || '🦁'}</span>
+                    <span className="text-xs font-bold text-stone-800">{t.naam}</span>
+                  </button>
+                ))}
+              </div>
+              <p className="text-[11px] text-stone-400 mt-1.5">Je kan er meerdere kiezen.</p>
+            </div>
+          )}
 
           {error && (
             <p className="text-xs font-bold text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2">{error}</p>
