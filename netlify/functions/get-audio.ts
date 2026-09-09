@@ -1,0 +1,38 @@
+import type { Handler } from '@netlify/functions';
+import { getStore } from '@netlify/blobs';
+
+export const handler: Handler = async (event) => {
+  const id = event.queryStringParameters?.id;
+  if (!id) {
+    return { statusCode: 400, body: 'Ontbrekende opname-id.' };
+  }
+
+  try {
+    const store = getStore({
+      name: 'student-recordings',
+      siteID: process.env.SITE_ID,
+      token: process.env.NETLIFY_BLOBS_TOKEN
+    });
+
+    const result = await store.getWithMetadata(id, { type: 'arrayBuffer' });
+
+    if (!result || !result.data) {
+      return { statusCode: 404, body: 'Opname niet gevonden.' };
+    }
+
+    const contentType = (result.metadata?.contentType as string) || 'audio/webm';
+
+    return {
+      statusCode: 200,
+      headers: {
+        'Content-Type': contentType,
+        'Cache-Control': 'public, max-age=31536000, immutable'
+      },
+      body: Buffer.from(result.data as ArrayBuffer).toString('base64'),
+      isBase64Encoded: true
+    };
+  } catch (error: any) {
+    console.error('Error fetching audio:', error);
+    return { statusCode: 500, body: 'Fout bij het ophalen van de opname.' };
+  }
+};
