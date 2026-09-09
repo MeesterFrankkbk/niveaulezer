@@ -356,6 +356,18 @@ export const ReadingView: React.FC<ReadingViewProps> = ({
               onRecordingComplete={(audioUrl) => {
                 setRecordedAudioUrl(audioUrl);
               }}
+              onRecordingUploaded={(persistentUrl) => {
+                // Vervangt de tijdelijke lokale link door de blijvende,
+                // zodra de opname op de achtergrond bewaard is - zo bevat
+                // het rapport straks een link die ook echt werkt.
+                setRecordedAudioUrl(persistentUrl);
+              }}
+              onRecordingStart={() => {
+                document.getElementById('story-reading-content')?.scrollIntoView({
+                  behavior: 'smooth',
+                  block: 'start'
+                });
+              }}
               existingAudioUrl={recordedAudioUrl}
             />
           </div>
