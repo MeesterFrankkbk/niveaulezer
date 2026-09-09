@@ -48,6 +48,13 @@ export const ReportModal: React.FC<ReportModalProps> = ({
     return `${m}m ${s}s`;
   };
 
+  // Enkel een link opnemen als de opname echt bewaard is op de server (dus
+  // geen tijdelijke lokale "blob:"-link, die buiten deze browser niets
+  // betekent en dus zeker niet bruikbaar is in een e-mail).
+  const persistentAudioLink = result.audioBlobUrl && !result.audioBlobUrl.startsWith('blob:')
+    ? `${window.location.origin}${result.audioBlobUrl}`
+    : null;
+
   const buildReportText = () =>
 `Hier zijn de leesprestaties van ${result.studentName}:
 
@@ -58,7 +65,7 @@ export const ReportModal: React.FC<ReportModalProps> = ({
 ⏱️ Leestijd: ${formatTime(result.durationSeconds)}
 ⚡ Leessnelheid: ${result.wpm} woorden per minuut (WPM)
 🏆 Begrip & Woordenschat: ${result.score}% (${result.correctAnswersCount}/${result.totalQuestions} vragen juist)
-
+${persistentAudioLink ? `\n🎙️ Beluister de leesopname: ${persistentAudioLink}\n` : ''}
 🌟 Positieve feedback:
 ${result.positiveFeedback}
 
