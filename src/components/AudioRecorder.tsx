@@ -1,13 +1,17 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Mic, Square, Play, Pause, RotateCcw, Download, CheckCircle, Volume2 } from 'lucide-react';
+import { Mic, Square, Play, Pause, RotateCcw, Download, CheckCircle, Volume2, RefreshCw } from 'lucide-react';
 
 interface AudioRecorderProps {
   onRecordingComplete: (audioBlobUrl: string, durationSeconds: number) => void;
+  onRecordingUploaded?: (persistentUrl: string) => void;
+  onRecordingStart?: () => void;
   existingAudioUrl?: string;
 }
 
 export const AudioRecorder: React.FC<AudioRecorderProps> = ({
   onRecordingComplete,
+  onRecordingUploaded,
+  onRecordingStart,
   existingAudioUrl
 }) => {
   const [isRecording, setIsRecording] = useState(false);
@@ -15,6 +19,7 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({
   const [audioUrl, setAudioUrl] = useState<string | null>(existingAudioUrl || null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [permissionError, setPermissionError] = useState<string | null>(null);
+  const [isUploadingRecording, setIsUploadingRecording] = useState(false);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -35,9 +40,38 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({
     };
   }, []);
 
+  const uploadRecordingInBackground = (audioBlob: Blob) => {
+    setIsUploadingRecording(true);
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const dataUrl = reader.result as string;
+        const base64 = dataUrl.split(',')[1];
+        const response = await fetch('/api/upload-audio', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ audioBase64: base64, contentType: 'audio/webm' })
+        });
+        if (response.ok) {
+          const data = await response.json();
+          if (data.url) {
+            onRecordingUploaded?.(data.url);
+          }
+        }
+      } catch (e) {
+        // Stil falen: de leerling behoudt gewoon zijn lokale opname om te
+        // beluisteren; het rapport zal in dat geval geen link bevatten.
+      } finally {
+        setIsUploadingRecording(false);
+      }
+    };
+    reader.readAsDataURL(audioBlob);
+  };
+
   const startRecording = async () => {
     setPermissionError(null);
     audioChunksRef.current = [];
+    onRecordingStart?.();
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -66,6 +100,11 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({
         const url = URL.createObjectURL(audioBlob);
         setAudioUrl(url);
         onRecordingComplete(url, recordingTime);
+
+        // Upload in the background so the recording gets a permanent link
+        // (needed to include it in an e-mailed report later) - the student
+        // doesn't need to do anything for this, it just happens.
+        uploadRecordingInBackground(audioBlob);
 
         // Stop all audio tracks
         stream.getTracks().forEach(track => track.stop());
@@ -232,9 +271,20 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({
               Opslaan
             </a>
 
-            <div className="ml-auto hidden md:flex items-center gap-1.5 text-xs text-emerald-700 font-bold bg-emerald-100/80 px-2.5 py-1 rounded-full">
-              <CheckCircle className="w-3.5 h-3.5" />
-              Opname opgeslagen voor rapport
+            <div className={`ml-auto hidden md:flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full ${
+              isUploadingRecording ? 'text-amber-700 bg-amber-100/80' : 'text-emerald-700 bg-emerald-100/80'
+            }`}>
+              {isUploadingRecording ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  Opname wordt bewaard...
+                </>
+              ) : (
+                <>
+                  <CheckCircle className="w-3.5 h-3.5" />
+                  Opname opgeslagen voor rapport
+                </>
+              )}
             </div>
 
             <audio
